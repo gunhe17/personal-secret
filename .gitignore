@@ -1,0 +1,39 @@
+# #
+# secrets / env
+#
+# .env/ is a *directory* of env files: commit the *.example templates,
+# ignore the real ones. (A bare ".env" rule would hide the whole dir.)
+.env/.env.*
+!.env/.env.*.example
+.docker/.env
+
+# #
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# #
+# tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# #
+# virtualenvs
+.venv/
+venv/
+
+# #
+# claude (keep shared settings.json + docs, ignore personal overrides)
+.claude/settings.local.json
+
+# #
+# os / editor
+.DS_Store
+*.swp

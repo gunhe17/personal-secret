@@ -1,0 +1,30 @@
+{
+  "name": "personal-secret",
+  "service": "workspace",
+
+  "workspaceFolder": "/app",
+  "dockerComposeFile": "../.docker/docker-compose.develop.yml",
+
+  "initializeCommand": ["sh", "${localWorkspaceFolder}/scripts/develop/devcontainer-initialize.sh"],
+  "postCreateCommand": ["sh", "${containerWorkspaceFolder}/scripts/develop/devcontainer-postcreate.sh"],
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "anthropic.claude-code",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.analysis.typeCheckingMode": "standard"
+      }
+    }
+  },
+
+  "remoteUser": "root",
+  "remoteEnv": {
+    "PATH": "/root/.local/bin:${containerEnv:PATH}"
+  }
+}

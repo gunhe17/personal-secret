@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>personal-secret</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<!-- /new modal sheet -->
+<div class="overlay hidden" id="new-sheet" onclick="if(event.target===this) closeNew()">
+  <div class="sheet">
+    <h3 class="panel__title">new secret</h3>
+    <div class="row">
+      <div>
+        <label class="label">kind</label>
+        <select id="add-kind" class="select" onchange="renderFields()">
+          <option value="ssh">ssh</option>
+          <option value="service">service</option>
+          <option value="api">api</option>
+          <option value="db">db</option>
+          <option value="cert">cert</option>
+          <option value="memo">memo</option>
+        </select>
+      </div>
+      <div>
+        <label class="label">name (handle)</label>
+        <input id="add-name" class="input" placeholder="prod-web" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label class="label">tags (space separated)</label>
+        <input id="add-tags" class="input" placeholder="prod infra" />
+      </div>
+      <div>
+        <label class="label">expires at (optional, ISO)</label>
+        <input id="add-expires" class="input" placeholder="2026-12-31T00:00:00Z" />
+      </div>
+    </div>
+    <label class="label">fields</label>
+    <div id="add-fields"></div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn btn--ghost" onclick="addFieldRow()">+ field</button>
+      <div class="spacer"></div>
+      <button class="btn btn--ghost" onclick="closeNew()">Cancel</button>
+      <button class="btn" onclick="doAdd()">Save</button>
+    </div>
+  </div>
+</div>
+
+<main class="content">
+  <div class="err" id="err"></div>
+
+  <!-- gate: initialize / unlock -->
+  <section class="panel" id="gate">
+    <h2 class="panel__title" id="gate-title">unlock</h2>
+    <label class="label">master password</label>
+    <div class="row">
+      <input id="gate-pw" class="input" type="password" placeholder="master password"
+             onkeydown="if(event.key==='Enter') doGate()" />
+      <button class="btn" onclick="doGate()" id="gate-btn">Unlock</button>
+    </div>
+    <p class="muted" id="gate-hint"></p>
+  </section>
+
+  <!-- vault contents -->
+  <section id="vault" class="hidden">
+    <div class="stage stage--empty" id="stage">
+      <div class="search">
+        <input id="f-query" class="search__input" placeholder="search by name · / for commands"
+               oninput="onInput()" onkeydown="onKey(event)" autocomplete="off" spellcheck="false" />
+        <p class="search__hint">이름으로 검색 · <b>/</b> 입력 시 명령 팔레트 (/new · /lock · /expiring · /reveal …)</p>
+      </div>
+
+      <div class="results" id="results"></div>
+
+      <!-- reveal -->
+      <div class="panel hidden" id="reveal-panel" style="width:100%;max-width:640px;margin-top:18px">
+        <h2 class="panel__title">reveal — <span id="reveal-name"></span></h2>
+        <div id="reveal-body"></div>
+        <p class="muted">복사 시 30초 후 클립보드를 덮어씁니다.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const FIELDS = {
+  ssh: ["host", "port", "user", "key_path", "private_key", "passphrase", "bastion"],
+  service: ["url", "username", "password", "note"],
+  api: ["provider", "key", "secret", "scope"],
+  db: ["engine", "host", "port", "database", "username", "password", "url"],
+  cert: ["body", "note"],
+  memo: ["body"],
+};
+
+function showErr(msg) { document.getElementById("err").textContent = msg || ""; }
+function toast(msg) {
+  const t = document.createElement("div"); t.className = "toast"; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 1500);
+}
+
+async function api(method, path, body) {
+  showErr("");
+  const opts = { method, headers: { "X-Requested-By": "personal-secret-web" } };
+  if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+  const res = await fetch(path, opts);
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) { throw new Error((data && data.message) || res.statusText); }
+  return data;
+}
+
+// #
+// status / gate
+
+async function refresh() {
+  const s = await api("GET", "/vault/status");
+  document.getElementById("vault").classList.toggle("hidden", !s.unlocked);
+  document.getElementById("gate").classList.toggle("hidden", s.unlocked);
+  if (!s.unlocked) closeNew();
+
+  const title = document.getElementById("gate-title");
+  const btn = document.getElementById("gate-btn");
+  const hint = document.getElementById("gate-hint");
+  if (!s.initialized) {
+    title.textContent = "initialize"; btn.textContent = "Initialize";
+    hint.textContent = "최초 마스터 비밀번호를 설정합니다. 분실 시 복구 불가능합니다.";
+    document.getElementById("gate-pw").placeholder = "new master password";
+  } else {
+    title.textContent = "unlock"; btn.textContent = "Unlock";
+    hint.textContent = "";
+    document.getElementById("gate-pw").placeholder = "master password";
+  }
+  window._initialized = s.initialized;
+  if (s.unlocked) { renderFields(); loadList(); }
+}
+
+async function doGate() {
+  const pw = document.getElementById("gate-pw").value;
+  if (!pw) return;
+  try {
+    const path = window._initialized ? "/vault/unlock" : "/vault/initialize";
+    await api("POST", path, { password: pw });
+    document.getElementById("gate-pw").value = "";
+    await refresh();
+  } catch (e) { showErr(e.message); }
+}
+
+async function doLock() {
+  try { await api("POST", "/vault/lock"); await refresh(); } catch (e) { showErr(e.message); }
+}
+
+// #
+// add
+
+function renderFields() {
+  const kind = document.getElementById("add-kind").value;
+  const box = document.getElementById("add-fields");
+  box.innerHTML = "";
+  (FIELDS[kind] || ["value"]).forEach(k => addFieldRow(k));
+}
+function addFieldRow(key) {
+  const box = document.getElementById("add-fields");
+  const row = document.createElement("div"); row.className = "kv";
+  row.innerHTML = `<input class="input kv__key" placeholder="field" value="${key ? key : ""}" />
+                   <input class="input kv__val" placeholder="value" />`;
+  box.appendChild(row);
+}
+function collectFields() {
+  const data = {};
+  document.querySelectorAll("#add-fields .kv").forEach(r => {
+    const [k, v] = r.querySelectorAll("input");
+    if (k.value.trim() && v.value !== "") data[k.value.trim()] = v.value;
+  });
+  return data;
+}
+async function doAdd() {
+  const kind = document.getElementById("add-kind").value;
+  const name = document.getElementById("add-name").value.trim();
+  const tags = document.getElementById("add-tags").value.trim().split(/\s+/).filter(Boolean);
+  const expires = document.getElementById("add-expires").value.trim() || null;
+  try {
+    await api("POST", "/secret", { kind, name, tags, expires_at: expires, data: collectFields() });
+    document.getElementById("add-name").value = "";
+    document.getElementById("add-tags").value = "";
+    document.getElementById("add-expires").value = "";
+    renderFields();
+    closeNew();
+    document.getElementById("f-query").value = name;
+    toast("saved"); loadList();
+  } catch (e) { showErr(e.message); }
+}
+
+// #
+// new (modal sheet)
+
+function openNew() {
+  renderFields();
+  document.getElementById("new-sheet").classList.remove("hidden");
+  document.getElementById("add-name").focus();
+}
+function closeNew() {
+  document.getElementById("new-sheet").classList.add("hidden");
+}
+
+// #
+// command palette
+
+let COMMANDS = [];
+const palette = { items: [], sel: 0, active: false };
+
+async function loadCommands() {
+  try { COMMANDS = await api("GET", "/commands"); } catch (_) { COMMANDS = []; }
+}
+
+function onInput() {
+  const v = document.getElementById("f-query").value;
+  if (v.startsWith("/")) showPalette(v);
+  else { palette.active = false; loadList(); }
+}
+
+function showPalette(v) {
+  palette.active = true;
+  setActive(true);
+  const token = v.slice(1).trim().split(/\s+/)[0].toLowerCase();
+  palette.items = COMMANDS.filter(c => c.name.startsWith(token));
+  palette.sel = 0;
+  renderPalette();
+}
+
+function paletteRest() {
+  const v = document.getElementById("f-query").value;
+  return v.slice(1).trim().split(/\s+/).slice(1).join(" ");
+}
+
+function renderPalette() {
+  const box = document.getElementById("results");
+  box.innerHTML = "";
+  if (!palette.items.length) { box.innerHTML = `<div class="group"><div class="group__empty">no command</div></div>`; return; }
+  const group = document.createElement("div");
+  group.className = "group";
+  palette.items.forEach((c, i) => {
+    const row = document.createElement("div");
+    row.className = "result result--button" + (i === palette.sel ? " result--sel" : "");
+    row.innerHTML = `<span class="result__name">/${c.name}</span>
+      <span class="result__spacer"></span>
+      <span class="muted">${c.hint}</span>`;
+    row.onclick = () => runCommand(c, paletteRest());
+    group.appendChild(row);
+  });
+  box.appendChild(group);
+}
+
+function onKey(e) {
+  if (!palette.active) return;
+  if (e.key === "ArrowDown") { e.preventDefault(); palette.sel = Math.min(palette.sel + 1, palette.items.length - 1); renderPalette(); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); palette.sel = Math.max(palette.sel - 1, 0); renderPalette(); }
+  else if (e.key === "Enter") {
+    e.preventDefault();
+    const cmd = palette.items[palette.sel];
+    if (cmd) runCommand(cmd, paletteRest());
+  }
+}
+
+async function runCommand(cmd, rest) {
+  rest = (rest || "").trim();
+  const clearOut = () => document.getElementById("results").innerHTML = "";
+  try {
+    if (cmd.kind === "form") { clearQuery(); clearOut(); setActive(false); openNew(); return; }
+    let path = cmd.path;
+    if (cmd.needs_target) {
+      if (!rest) { showErr(`usage: /${cmd.name} <name>`); return; }
+      path = path.replace("{target}", encodeURIComponent(rest));
+    }
+    if (path.includes("{arg}")) path = path.replace("{arg}", encodeURIComponent(rest || cmd.arg_default || ""));
+    if (cmd.confirm && !confirm(`/${cmd.name} ${rest}?`)) return;
+    const data = await api(cmd.method, path);
+    clearQuery();
+    if (cmd.render === "results") { setActive(true); render(data); }
+    else if (cmd.render === "reveal") { setActive(true); clearOut(); showReveal(rest, data); }
+    else if (cmd.render === "toast") { clearOut(); setActive(false); toast(typeof data === "object" ? JSON.stringify(data) : String(data)); }
+    else if (cmd.render === "refresh") { clearOut(); setActive(false); toast(`/${cmd.name} ✓`); await refresh(); }
+  } catch (e) { showErr(e.message); }
+}
+
+function clearQuery() {
+  document.getElementById("f-query").value = "";
+  palette.active = false;
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  closeNew();
+  if (palette.active) { clearQuery(); document.getElementById("results").innerHTML = ""; setActive(false); }
+});
+
+// #
+// list
+
+async function loadList() {
+  const q = document.getElementById("f-query").value.trim();
+  setActive(!!q);
+  const results = document.getElementById("results");
+  if (!q) { results.innerHTML = ""; return; }
+  try {
+    const params = new URLSearchParams();
+    params.set("query", q);
+    render(await api("GET", "/secret?" + params.toString()));
+  } catch (e) { showErr(e.message); }
+}
+function setActive(on) {
+  document.getElementById("stage").classList.toggle("stage--empty", !on);
+}
+function render(rows) {
+  const box = document.getElementById("results");
+  box.innerHTML = "";
+  if (!rows.length) { box.innerHTML = `<div class="group"><div class="group__empty">(no match)</div></div>`; return; }
+  const now = Date.now();
+  const group = document.createElement("div");
+  group.className = "group";
+  rows.forEach(r => {
+    const tags = (r.tags || []).map(t => `<span class="tag">${t}</span>`).join("");
+    let exp = "—", cls = "badge";
+    if (r.expires_at) {
+      const days = Math.ceil((new Date(r.expires_at).getTime() - now) / 86400000);
+      if (days < 0) { exp = "expired"; cls = "badge badge--expired"; }
+      else { exp = `${days}d`; cls = days < 14 ? "badge badge--soon" : "badge"; }
+    }
+    const row = document.createElement("div");
+    row.className = "result";
+    row.innerHTML = `<span class="result__name">${r.name}</span>
+      <span class="kind">${r.kind}</span>
+      <span class="result__meta">${tags}</span>
+      <span class="result__spacer"></span>
+      <span class="${cls}">${exp}</span>
+      <span class="cluster">
+        <button class="btn btn--ghost" onclick="doReveal('${r.id}','${r.name}')">Reveal</button>
+        <button class="btn btn--danger" onclick="doDelete('${r.id}','${r.name}')">Del</button>
+      </span>`;
+    group.appendChild(row);
+  });
+  box.appendChild(group);
+}
+
+// #
+// reveal / delete
+
+async function doReveal(id, name) {
+  try { showReveal(name, await api("GET", `/secret/${id}/reveal`)); }
+  catch (e) { showErr(e.message); }
+}
+function showReveal(name, data) {
+  document.getElementById("reveal-panel").classList.remove("hidden");
+  document.getElementById("reveal-name").textContent = name;
+  const box = document.getElementById("reveal-body");
+  box.innerHTML = "";
+  const group = document.createElement("div");
+  group.className = "group";
+  Object.entries(data.data || {}).forEach(([k, v]) => {
+    const row = document.createElement("div");
+    row.className = "group__row";
+    const val = String(v);
+    row.innerHTML = `<span class="label kv__key" style="margin:0">${k}</span>
+      <span class="mono kv__val">••••••••</span>
+      <button class="btn btn--ghost">show</button>
+      <button class="btn btn--ghost">copy</button>`;
+    const [, span, showBtn, copyBtn] = row.children;
+    showBtn.onclick = () => { span.textContent = span.textContent === "••••••••" ? val : "••••••••"; };
+    copyBtn.onclick = () => copyClip(val);
+    group.appendChild(row);
+  });
+  box.appendChild(group);
+  document.getElementById("reveal-panel").scrollIntoView({ behavior: "smooth" });
+}
+
+async function copyClip(val) {
+  try {
+    await navigator.clipboard.writeText(val);
+    toast("copied — clears in 30s");
+    setTimeout(async () => { try { await navigator.clipboard.writeText(""); } catch (_) {} }, 30000);
+  } catch (e) { showErr("clipboard: " + e.message); }
+}
+
+async function doDelete(id, name) {
+  if (!confirm(`delete "${name}"?`)) return;
+  try { await api("DELETE", `/secret/${id}`); toast("deleted"); loadList();
+    document.getElementById("reveal-panel").classList.add("hidden");
+  } catch (e) { showErr(e.message); }
+}
+
+loadCommands();
+refresh();
+</script>
+</body>
+</html>

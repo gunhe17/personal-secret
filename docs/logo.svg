@@ -1,0 +1,17 @@
+<svg width="200" height="240" viewBox="0 0 200 240" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="personal-secret">
+  <g stroke="#3c4043" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- shackle -->
+    <path d="M72 90 L72 64 A28 28 0 0 1 128 64 L128 90" />
+    <!-- body -->
+    <rect x="48" y="90" width="104" height="112" rx="22" />
+    <!-- P stem -->
+    <path d="M100 118 L100 154" />
+    <!-- P bowl -->
+    <path d="M100 118 C 134 118, 134 150, 100 150" />
+  </g>
+  <g fill="#3c4043">
+    <!-- keyhole -->
+    <circle cx="100" cy="165" r="9" />
+    <path d="M95 171 L91 192 L109 192 L105 171 Z" />
+  </g>
+</svg>

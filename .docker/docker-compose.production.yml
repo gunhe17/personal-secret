@@ -1,0 +1,32 @@
+name: personal-secret-production
+
+services:
+  api:
+    container_name: personal-secret-production-api
+    build:
+      context: ..
+      dockerfile: .docker/Dockerfile.production.api
+    restart: unless-stopped
+    ports:
+      # loopback-only — secrets server must not be reachable off-host
+      - "127.0.0.1:${PRODUCTION_API_PORT}:${PRODUCTION_API_CONTAINER_PORT}"
+    depends_on:
+      - database
+    env_file:
+      - ../.env/.env.production
+
+  database:
+    container_name: personal-secret-production-database
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${PRODUCTION_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${PRODUCTION_POSTGRES_PASSWORD}
+      - POSTGRES_DB=${PRODUCTION_POSTGRES_DB}
+    ports:
+      - "127.0.0.1:${PRODUCTION_POSTGRES_PORT}:${PRODUCTION_POSTGRES_CONTAINER_PORT}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

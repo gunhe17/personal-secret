@@ -1,0 +1,42 @@
+[project]
+name = "personal-secret"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "pydantic>=2",
+]
+
+[project.optional-dependencies]
+app = [
+    "fastapi",
+    "uvicorn[standard]",
+    "sqlalchemy[asyncio]",
+    "asyncpg",
+    "alembic",
+    "httpx",
+    "cryptography",
+    "argon2-cffi",
+]
+cli = [
+    "httpx",
+    "keyring",
+    "pyobjc-framework-LocalAuthentication ; sys_platform == 'darwin'",
+]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "ruff",
+    "mypy",
+]
+
+[project.scripts]
+secret = "personal_secret.cli.bin.secret:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["personal_secret*"]
+namespaces = true
