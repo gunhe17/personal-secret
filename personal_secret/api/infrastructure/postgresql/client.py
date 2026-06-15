@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from personal_secret.api.config import get_postgres_config
 from personal_secret.api.core.model import Base
+from personal_secret.api.infrastructure.postgresql.rls import apply_rls
 
 import personal_secret.api.domain  # noqa: F401
 
@@ -41,6 +42,8 @@ class Postgres:
             Base.metadata.create_all(conn)
             for t in missing:
                 print(f"  + {t}")
+        # RLS 정책은 모델 밖 DDL — 매번 idempotent 재적용
+        apply_rls(conn)
         return len(missing)
 
     async def create_tables_once_in_process(self):
@@ -61,7 +64,7 @@ class Postgres:
 
 
 # #
-# singleton
+# Postgres
 
 db_client = Postgres(get_postgres_config().database_url())
 
