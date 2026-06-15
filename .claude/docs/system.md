@@ -1,4 +1,8 @@
-# Shared Project Rules
+# 공유 프로젝트 규칙
+
+전 레이어 공통 — MCP 의존성 조회 + 수정 워크플로우. CLAUDE.md가 `@`로 직접 로드.
+
+---
 
 ## MCP
 

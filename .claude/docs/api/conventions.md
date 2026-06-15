@@ -1,0 +1,394 @@
+# 공통 코드 컨벤션
+
+전 레이어 공통 Python 코드 스타일. 모든 `.py` 파일에 적용. 레이어별 패턴은 각 레이어 문서를 참고 — 이 문서는 레이어와 무관한 시각/포맷 규칙만 담는다.
+
+상위: [api.md](api.md)
+
+---
+
+## 이 문서
+
+| 섹션 | 핵심 규칙 |
+|------|----------|
+| **파일 구조** | docstring 없음. 절차 순서 = 읽기 순서(호출자 위), 모듈 상수 블록 피함 |
+| **섹션 마커** | `# #` 시그니처로 논리 영역, 인라인 `# label`로 메서드 단계 |
+| **네이밍** | 폴더/파일 컨텍스트 중복 금지, 준말 금지(`id`만 예외) |
+| **반환값** | happy path는 named variable, 자명한 표현식은 inline(괄호 펼침) |
+| **호출 스타일** | 인자 all-or-nothing, `*` 키워드 전용, nested call·삼항식 인자는 펼침 |
+| **Import** | 표준→서드파티→로컬, 도메인 클래스 한 줄씩, registry는 모듈 namespace import |
+| **비동기** | DB 접근 `async`, 트랜잭션은 `@asynccontextmanager` |
+| **포맷팅** | 4칸, 함수 사이 2줄, flat dict 삼항식은 괄호+줄바꿈 |
+| **주석 언어** | 라벨/마커 영어, 라벨 뒤 한국어 부연은 why/계약/주의만(what 재서술 금지) |
+
+---
+
+## 파일 구조
+
+**모듈 docstring 작성하지 않는다.** 파일명, `# #` 섹션, 최상위 함수가 의도를 드러낸다.
+
+**절차 순서 = 읽기 순서.** 호출자가 위, 피호출자가 아래. 최상위 함수가 파일 맨 위. 타입(`@dataclass` 등)은 그 단계 섹션 안에 동거. 전방 참조용 `from __future__ import annotations` 사용.
+
+**모듈 수준 상수 블록(`MAX_X = ...`)은 피한다.** 별도 `config.py`로 분리(`ABC` + `@property @abstractmethod` + 환경별 서브클래스 + 팩토리 함수 — [reference/singleton-config.md](reference/singleton-config.md) "Config 클래스" 참고). 단일 파일 lab/script의 `# config` 섹션은 fallback이지 권장 아님.
+
+```python
+from __future__ import annotations
+
+import argparse
+import asyncio
+
+
+# #
+# orchestrate
+
+async def generate(*, ...) -> list[ScoredSong]:
+    # fetch
+    metadatas = await fetch_all_metadata(...)
+    # score
+    scored = [score(...) for m in metadatas]
+    # select
+    generated = select(scored=scored, size=size)
+
+    return generated
+
+
+# #
+# fetch
+# (SongMetadata 타입, fetch 관련 함수들)
+
+# #
+# score
+# (ScoredSong 타입, score 관련 함수들)
+
+# #
+# select
+# (select 관련 함수들)
+```
+
+---
+
+## 섹션 마커
+
+**`# #` 시그니처**로 파일/클래스 내부 논리 영역 구분.
+
+```python
+# #
+# factory
+
+@classmethod
+def new(cls, ...): ...
+```
+
+라벨 예:
+- 모듈: `# route`, `# run`, `# cli`, `# client`, `# model`, `# repository`, `# orchestrate`, `# fetch`, `# score`, `# select`
+- 클래스 내부: `# factory`, `# query`, `# command`, `# create`, `# read`, `# update`, `# delete`
+- 싱글톤 블록은 PascalCase 클래스명 — [reference/singleton-config.md](reference/singleton-config.md) "싱글톤" 참고
+
+**인라인 라벨(`# label`, 단일 `#`)** 로 메서드 내부 단계 표기.
+
+```python
+# type
+if not isinstance(value, str):
+    raise  # InvalidError
+
+# format
+if not re.match(...):
+    raise  # InvalidFormatError
+```
+
+라벨 예: `# type`, `# format`, `# value`, `# length`, `# hint`, `# cap`, `# normalize`, `# components`, `# weighted sum`, `# fan-out`, `# filter`, `# backoff retry`, `# rank`, `# fallback`.
+
+---
+
+## 네이밍
+
+**식별자에 폴더/파일 컨텍스트를 중복하지 않는다.** 호출부 `from foo.bar import X`에서 경로 `foo.bar`가 이미 컨텍스트를 제공함. `X` 안에 `foo`나 `bar`를 다시 담으면 import 라인이 `bar의 BarX`처럼 stutter.
+
+**준말(축약) 금지 — 단 `id`는 예외.** 식별자는 풀어 쓴다(`config`은 OK인 통용어 제외). `id`만은 `identifier`의 관용 축약으로 허용 — 조회 키 파라미터는 `identifier` 대신 `id`로 짧게 쓴다(예: `get_by_identifier(*, session, id: str)`). 단 **메서드명의 의미 구분은 보존**: base의 `find_by_id`(UUID pk)와 도메인의 `find_by_identifier`(name-or-uuid)는 다른 개념이라 메서드명은 유지하고 파라미터만 `id`로 축약(메서드명까지 `_by_id`로 바꾸면 base와 충돌·LSP 위반).
+
+**폴더 컨텍스트 중복 금지**:
+
+```
+infrastructure/crypto/cache.py
+  class CryptoSessionCache     ❌  →  class SessionCache     ✓
+  def crypto_session_cache()   ❌  →  def session_cache()    ✓
+
+usecase/secret/create.py
+  class CreateSecret           ❌  →  class Create           ✓
+```
+
+**파일 컨텍스트 중복 금지**:
+
+```
+setlist_generator.py
+  def generate_setlist()       ❌  →  def generate()         ✓
+
+domain/user/email.py
+  def from_email_str()         ❌  →  def from_str()         ✓
+```
+
+**예외 — 파일 안에 동종 다중 식별자가 있어 분별 단어가 필요한 경우**:
+
+```
+infrastructure/crypto/cache.py
+  class SessionCache, class KeyCache              # "Cache" 보존, 분별 단어로 구분
+
+domain/secret/secret_repository.py
+  class SecretModel, class SecretRepository       # "Model"/"Repository" 보존
+```
+
+분별 단어(`Cache`, `Model`, `Repository`)는 유지하되 폴더 prefix(`Secret`, `Crypto`)는 유지/생략 모두 가능. 베이스 ABC가 일반 이름(`Repository`, `Entity`)일 때만 서브에 도메인 prefix 부여로 충돌 회피.
+
+| 대상 | 형태 | 예 |
+|------|------|-----|
+| 클래스 | PascalCase | `Secret`, `SecretRepository` |
+| 함수/메서드/변수 | snake_case | `from_str`, `find_by_name` |
+| 비공개 (모듈/필드) | `_` 접두 | `_value`, `_fetch_metadata` |
+| Config 프로퍼티 | UPPER_CASE | `POSTGRES_USER` |
+| 힌트 클래스 필드 | `_` + `# hint` | `_format: str = "%Y-%m-%d"` |
+
+---
+
+## 반환값
+
+**Happy path는 named variable에 담은 뒤 return.** 함수의 정상 출력을 함수 이름을 만족하는 변수에 담고 반환.
+
+```python
+metadata = SongMetadata(...)
+return metadata
+```
+
+**예외 — inline return**:
+- 가드/에러 early return: inline (`return None`, `return 0.0` 등)
+- 순수 위임(passthrough): `return await delegate(...)` inline 허용 (CLI 진입점 등)
+- **자명한 출력 표현식**: 최종 반환이 그 자체로 자명한 단일 표현식(comprehension, dict/list literal 등)이면 변수에 담지 말고 **바로 반환**. 변수명이 표현식을 단순 재진술할 뿐이면(`listed = [...]; return listed`) noise. 단 **여는 괄호는 `return` 줄에 두고 본문은 줄바꿈해 펼친다**(한 줄에 욱여넣지 않음 — 호출 인자 펼침 규칙과 동일 결).
+
+```python
+# ❌ 이름이 표현식 재진술 — noise
+listed = [s.to_dict() for s in secrets]
+return listed
+
+# ❌ 한 줄에 욱여넣기
+return [s.to_dict() for s in secrets]
+
+# ✓ 변수 없이 바로 반환 + 괄호 펼침
+return [
+    s.to_dict() for s in secrets
+]
+```
+
+| 함수 | 변수명 |
+|------|--------|
+| `fetch_all_metadata` | `metadatas` |
+| `_fetch_metadata` | `metadata` |
+| `score` | `scored` |
+| `select` | `selected` |
+| `generate` | `generated` |
+
+규칙: **이름은 표현식이 못 주는 의미를 줄 때만 단다** — 생산 함수 출력에 의미 부여(`metadatas`)나 다단계 흐름의 중간값일 때 named variable, 표현식이 곧 의도면(자명한 변환·literal·passthrough) inline. intermediate 변수는 **생산 함수** 출력 의미, 최종 return 변수는 **enclosing 함수** 출력 의미.
+
+---
+
+## 호출 스타일
+
+**인자 표기는 all-or-nothing.** 한 호출 안에서 keyword/positional 혼용 금지.
+
+```python
+# ✓ 전부 positional
+asyncio.wait_for(coro, FETCH_TIMEOUT_SEC)
+random.sample(["a", "b", "c"], 2)
+
+# ✓ 전부 keyword
+score(metadata=m, target_topics=topics, congregation_low=lo, congregation_high=hi)
+
+# ❌ 혼용
+asyncio.wait_for(coro, timeout=FETCH_TIMEOUT_SEC)
+```
+
+stdlib 강제 혼용 예외: `sorted(iterable, /, *, key, reverse)`, `argparse.add_argument(*name_or_flags, **kwargs)`.
+
+**키워드 전용 강제.** 도메인 함수는 `*` 로 모든 인자 키워드 전용화. 다인자 시그니처는 파라미터마다 줄바꿈 + trailing comma.
+
+```python
+def new(
+    cls,
+    *,
+    name: Name,
+    birth: Birth,
+    email: Email,
+    password: Password,
+) -> "User":
+```
+
+**인자 값이 nested call이면 호출을 펼친다.** 인자 값이 그 자체로 팩토리/변환 호출(`Name.from_str(...)`, `Ciphertext.from_bytes(...)` 등)이면 한 줄에 욱여넣지 말고 인자마다 줄바꿈 + trailing comma.
+
+```python
+# ✓ nested call 인자 → 펼침
+secret = await SecretRepository.find_by_name(
+    session=session,
+    name=Name.from_str(input.name),
+)
+
+# ❌ 한 줄에 욱여넣기 — nested 변환이 묻힌다
+secret = await SecretRepository.find_by_name(session=session, name=Name.from_str(input.name))
+```
+
+- 트리거는 **인자 값에 nested call이 있는지** — 전부 단순 값(`session=session`, `id=secret.id`)이면 한 줄 유지 OK
+- 펼친 형태는 정의부와 동일하게 trailing comma 유지
+
+**인자 값이 삼항식(`... if ... else ...`)이면 괄호로 감싸 줄바꿈.** 한 줄 삼항식은 분기가 인자 사이에 묻힌다. 괄호 + 줄바꿈으로 "이 인자는 분기가 있다(예외적 경우)"를 시각적으로 분리한다 — flat dict 값의 삼항식 규칙([포맷팅](#포맷팅) "삼항식은 괄호로 감싸 줄바꿈")과 동일 원칙, 호출 인자에도 적용.
+
+```python
+# ✓ 삼항식 인자 → 괄호 + 줄바꿈
+secrets = await SecretRepository.search(
+    session=session,
+    kind=(
+        Kind.from_str(input.kind) if input.kind is not None else None
+    ),
+    tag=input.tag,
+    query=input.query,
+)
+
+# ❌ 한 줄에 삼항식 — 분기가 묻힌다
+kind=Kind.from_str(input.kind) if input.kind is not None else None,
+```
+
+- 단순 값(`tag=input.tag`)은 한 줄 유지 — **삼항 분기가 있을 때만** 적용
+- 닫는 괄호 `)` 다음 trailing comma 유지
+
+---
+
+## Import
+
+순서: 표준 → 서드파티 → 로컬. 그룹마다 한 줄 공백. 로컬은 패키지 루트부터 절대경로 `from personal_secret.api.xxx`. 도메인 클래스는 **한 줄에 하나씩** 별도 import.
+
+```python
+import re
+from dataclasses import dataclass
+
+from personal_secret.api.core.value_object import ValueObject
+
+from personal_secret.api.domain.secret.name import Name
+from personal_secret.api.domain.secret.kind import Kind
+from personal_secret.api.domain.secret.tags import Tags
+```
+
+### 라우터/registry — 모듈 namespace import
+
+여러 핸들러를 한 모듈에서 등록할 때는 **`from package import module`** 형태로 import하고 `module.func`로 접근. alias 노이즈 제거 + namespace 의도 명확. (등록이 일어나는 합성 루트 = `bin/server.py` — [reference/server.md](reference/server.md) "합성 루트".)
+
+```python
+# ✓ 모듈 namespace — 한 모듈에서 N개 함수 등록 (bin/server.py)
+from personal_secret.api.endpoint import secret
+
+server.router(Router(path="/secret",         methods=["POST"], endpoint=secret.post_create))
+server.router(Router(path="/secret/{id}",    methods=["GET"],  endpoint=secret.get_reveal))
+```
+
+```python
+# ❌ alias 패턴 — endpoint 추가마다 import 늘어남
+from personal_secret.api.endpoint.secret import post_create as secret_post_create
+```
+
+**적용 기준**:
+- 한 모듈에서 **2개 이상** 함수 import → 모듈 namespace (`from pkg import mod`)
+- 한 모듈에서 **1개**만 import → 함수 직접 (`from pkg.mod import func`)
+- 적용 위치: FastAPI router 등록, CLI dispatcher, MCP tool registry 등 "여러 핸들러를 외부 시스템에 등록"하는 파일
+- 도메인/usecase/repository 호출처에는 적용 안 함 — 도메인 클래스 한 줄당 import 규칙 그대로
+
+---
+
+## 비동기 + 데코레이터
+
+- DB 접근 메서드는 `async`
+- 트랜잭션은 `@asynccontextmanager` 헬퍼로 래핑
+- 추상 비동기 메서드 본문도 `...`
+- **`@typecheck`** (`core/validate.py`) — 인자 런타임 타입 검사. 불일치 시 `DevelopError`(새 예외 없이 직접 raise). Entity/VO 팩토리(`new`)·이벤트 마커 팩토리·usecase 함수에 부착. `@classmethod`와 함께 쓸 땐 `@classmethod` 위, `@typecheck` 아래 순서
+
+```python
+@asynccontextmanager
+async def transactional_session(session_factory):
+    session = session_factory()
+    try:
+        yield session
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    finally:
+        await session.close()
+```
+
+트랜잭션 경계의 의미(같은 session = atomic)는 [reference/usecase-flow.md](reference/usecase-flow.md) "Session = Transaction" 참고.
+
+---
+
+## 포맷팅
+
+- 들여쓰기 4칸
+- import 블록 후 두 줄 공백
+- 모듈 함수 사이 두 줄 공백 (`# cli` 섹션 내부는 한 줄 예외 — [reference/usecase-flow.md](reference/usecase-flow.md) CLI 섹션 참고)
+- 메서드 사이 한 줄 공백
+- 긴 함수 시그니처: 파라미터마다 줄바꿈 + trailing comma
+- `if __name__ == "__main__":` 는 파일 하단 `# cli` 또는 `# run` 섹션
+
+**flat dict return의 삼항식은 괄호로 감싸 줄바꿈.** `to_dict` / `to_model`처럼 한 줄 = 한 키인 딕셔너리에서, 값에 `... if ... else ...`가 들어가면 키 라인이 길어진다. 괄호 + 줄바꿈으로 "이 키는 분기가 있다"를 시각적으로 분리.
+
+```python
+# ❌ 한 줄에 삼항식
+return {
+    "expires_at": self.expires_at.to_str() if self.expires_at else None,
+}
+
+# ✓ 괄호 + 줄바꿈
+return {
+    "expires_at": (
+        self.expires_at.to_str() if self.expires_at else None
+    ),
+}
+```
+
+- 단순 값(`"name": self.name.to_str()`)은 한 줄 유지 — 분기 문법이 있을 때만 적용
+- 닫는 괄호 `)` 다음 trailing comma 유지
+
+---
+
+## 주석 언어
+
+- 코드 라벨/섹션 마커: **영어** (`# factory`, `# query`)
+- 도메인 의미가 강한 docstring (MCP tool 설명 등): **한국어 허용**
+
+### 라벨 뒤 한국어 부연 — why/계약/주의만, what 재서술 금지
+
+인라인 라벨은 영어 한 단어(`# find`, `# event`). 라벨 뒤 한국어 부연은 **코드가 드러내지 못하는 것** — 비자명한 의도(why)·입력 계약·주의(gotcha) — 일 때만 단다. **코드가 이미 보여주는 동작(what)을 한국어로 재서술하지 않는다.**
+
+> **기본값은 라벨만.** 부연은 *예외*다. 부연을 쓰기 전에 "이게 코드·시그니처·타입·docs 중 어디에도 없는 정보인가?"를 물어라. 아니면 지운다.
+
+- 형식: `# label (짧은 한국어 단서)`. 부연은 *왜/계약/함정* 한 조각만.
+- 냄새 신호: `# label — A + B → C`처럼 **코드 흐름을 나열하는 산문 체인**. 코드를 읽으면 보이는 내용이라 가치 0 → 라벨만 남긴다.
+- **냄새 신호 (가장 흔함): `# label (호출/의존성이 하는 일 요약)`.** 다음 줄이나 `Depends(...)`·메서드 호출이 *이미 하는 일*을 괄호로 풀어쓴 것 — 예: `# command (require_member 가 멤버십·team_id·RLS 확정)`. require_member 시그니처가 그걸 말하므로 **괄호째 지우고 `# command` 만 남긴다.** "엔드포인트 흐름 요약"·"이 usecase 단계 설명"은 거의 다 이 부류다.
+- **설계 근거는 docs에, 코드 주석에 복제하지 않는다.** "왜 이 패턴/계약인가"(예: `raise 변형`, `update override 와 대칭`, `domain-local`)는 컨벤션 문서에 한 번 적고 메서드마다 반복하지 않는다. 패턴이 문서화된 컨벤션이면 메서드는 시그니처·코드로 자기설명(예: `get_*`/override의 `-> E` + `if None: raise`)되므로 주석 불필요.
+- **필드/변수 선언 주석은 기본 금지 — 의심되면 지운다.** 선언 옆 주석은 거의 항상 (a) 타입이 이미 말하는 것(`int | None` = "nullable·적재 시 채워짐") 재서술이거나 (b) docs에 있는 설계 근거(`id/audit 같은 프레임워크 필드라 raw`) 복제다. **둘 다 삭제** — 타입은 타입이, "왜 이렇게 생겼나"는 reference 문서가 말한다. 선언에 진짜 *함정*(예: 특정 순서 의존)이 있을 때만 `# label (단서)` 한 조각.
+
+```python
+# ✓ 비자명한 계약/주의 — 단다
+# metadata (생략 필드는 기존값 보존 — None = 미변경)
+# decrypt (잠겨있으면 LockedError)
+# persist (load~update 사이 삭제 race → None)
+
+# ❌ 코드 흐름 재서술(what) — 라벨만 남겨라
+# event(삭제) — soft-delete + 마커 한 덩어리 → 저장 + 응답   →   # event
+
+# ❌ 라벨 + 호출/의존성 요약 — 괄호째 지운다 (가장 흔한 잡음)
+# command (team 스코프 — require_member 가 멤버십·team_id·RLS 컨텍스트 확정)   →   # command
+# claim (sequence 순서 · FOR UPDATE SKIP LOCKED)                              →   # claim
+# verify (login_proof 를 저장된 login_verifier 와 대조)                        →   # verify
+
+# ✓ 라벨 + 부연이 살아남는 경우 = 코드에 안 보이는 보안/계약/함정
+# find (이메일/증명 어느쪽 오류인지 구분 노출 안 함)        ← 보안 (왜 같은 에러)
+# value 는 클라가 team_key 로 암호화한 ciphertext         ← 계약 (input 이 평문 아님)
+
+# ❌ 필드 선언 주석 = 타입 재서술 + docs 근거 복제 — 통째로 지운다
+sequence: int | None = None  # sequence 는 DB 발급 단조 커서 — id/audit 같은 프레임워크 필드(raw, 적재 시 채워짐)
+# ✓ 주석 없음 — 타입이 nullable을, reference 문서가 "왜 raw"를 말한다
+sequence: int | None = None
+```
