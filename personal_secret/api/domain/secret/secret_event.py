@@ -11,9 +11,9 @@ from personal_secret.api.domain.secret.secret import Secret
 
 
 class SecretEventKind(Enum):
-    CREATED = "secret.created"
-    UPDATED = "secret.updated"
-    DELETED = "secret.deleted"
+    CREATED = "created"
+    UPDATED = "updated"
+    DELETED = "deleted"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -42,17 +42,30 @@ class SecretEvent(Event):
     # #
     # query
 
-    def kind(self) -> str:
-        return self._kind.value
+    def entity_name(self) -> str:
+        return "secret"
 
-    def entity_type(self) -> str:
-        return "Secret"
+    def entity_action(self) -> str:
+        return self._kind.value
 
     def entity_id(self) -> UUID:
         return self.secret.id
 
+    def team_id(self) -> UUID:
+        return self.secret.team_id
+
+    def payload(self) -> dict:
+        # 평문 식별자만 — value(암호문)는 절대 싣지 않는다
+        return {
+            "domain": self.secret.domain.to_str(),
+            "service": self.secret.service.to_str(),
+            "project": self.secret.project.to_str(),
+            "field": self.secret.field.to_str(),
+        }
+
     def to_dict(self) -> dict:
         return {
-            "kind": self._kind.value,
+            "entity_name": self.entity_name(),
+            "entity_action": self._kind.value,
             "secret_id": str(self.secret.id),
         }

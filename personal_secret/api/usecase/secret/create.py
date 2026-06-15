@@ -2,26 +2,23 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
-from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel
 
 from personal_secret.api.core.validate import typecheck
 
-from personal_secret.api.domain.common.exception import AlreadyExistsError
 from personal_secret.api.domain.secret.secret import Secret
-from personal_secret.api.domain.secret.kind import Kind
-from personal_secret.api.domain.secret.name import Name
-from personal_secret.api.domain.secret.tags import Tags
-from personal_secret.api.domain.secret.expires_at import ExpiresAt
+from personal_secret.api.domain.secret.domain import Domain
+from personal_secret.api.domain.secret.service import Service
+from personal_secret.api.domain.secret.project import Project
+from personal_secret.api.domain.secret.field import Field
 from personal_secret.api.domain.secret.ciphertext import Ciphertext
 from personal_secret.api.domain.secret.secret_repository import SecretRepository
 from personal_secret.api.domain.secret.secret_event import SecretEvent
 
 from personal_secret.api.domain.event.event_repository import EventRepository
 
-from personal_secret.api.infrastructure.crypto.cache import session_cache
 from personal_secret.api.infrastructure.postgresql.client import db_client
 from personal_secret.api.infrastructure.postgresql.session import transactional_session
 
@@ -30,42 +27,31 @@ from personal_secret.api.infrastructure.postgresql.session import transactional_
 # input
 
 class Input(BaseModel):
-    kind: str
-    name: str
-    tags: list[str] = []
-    expires_at: datetime | None = None
-    data: dict
+    domain: str
+    service: str
+    project: str
+    field: str
+    value: str
 
 
 # #
 # usecase
 
 @typecheck
-async def create(*, session, input: Input) -> dict:
-
-    if await SecretRepository.exists_by_name(
-        session=session,
-        name=Name.from_str(input.name),
-    ):
-        raise AlreadyExistsError("Secret", input.name)
-
+async def create(*, session, input: Input, team_id: UUID) -> dict:
     # persist
     event, entity = SecretEvent.created(
         secret=(
-            await SecretRepository.add(
+            await SecretRepository.add_unique_by_path(
                 session=session,
                 entity=Secret.new(
-                    kind=Kind.from_str(input.kind),
-                    name=Name.from_str(input.name),
-                    tags=Tags.from_list(input.tags),
-                    ciphertext=Ciphertext.from_bytes(
-                        bytes=session_cache.encrypt(
-                            plaintext=json.dumps(input.data).encode("utf-8"),
-                        )
-                    ),
-                    expires_at=(
-                        ExpiresAt.from_datetime(input.expires_at) if input.expires_at else None
-                    ),
+                    team_id=team_id,
+                    domain=Domain.from_str(input.domain),
+                    service=Service.from_str(input.service),
+                    project=Project.from_str(input.project),
+                    field=Field.from_str(input.field),
+                    # value 는 클라가 team_key 로 이미 암호화한 ciphertext(base64) — 서버는 저장만
+                    value=Ciphertext.from_str(input.value),
                 ),
             )
         )
@@ -85,26 +71,30 @@ async def create(*, session, input: Input) -> dict:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--kind", required=True)
-    parser.add_argument("--name", required=True)
-    parser.add_argument("--tags", nargs="*", default=[])
-    parser.add_argument("--expires-at", default=None)
-    parser.add_argument("--data", required=True)
+    parser.add_argument("--domain", required=True)
+    parser.add_argument("--service", required=True)
+    parser.add_argument("--project", required=True)
+    parser.add_argument("--field", required=True)
+    parser.add_argument("--value", required=True)
+    parser.add_argument("--team-id", required=True)
     return parser.parse_args()
 
 async def _main():
     args = _parse_args()
     async with transactional_session(db_client.SessionLocal) as session:
-        print(await create(
-            session=session,
-            input=Input(
-                kind=args.kind,
-                name=args.name,
-                tags=args.tags,
-                expires_at=args.expires_at,
-                data=json.loads(args.data),
-            ),
-        ))
+        print(
+            await create(
+                session=session,
+                input=Input(
+                    domain=args.domain,
+                    service=args.service,
+                    project=args.project,
+                    field=args.field,
+                    value=args.value,
+                ),
+                team_id=UUID(args.team_id),
+            )
+        )
 
 if __name__ == "__main__":
     asyncio.run(_main())

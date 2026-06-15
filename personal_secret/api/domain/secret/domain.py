@@ -8,7 +8,7 @@ from personal_secret.api.domain.common.exception import InvalidError, InvalidFor
 
 
 @dataclass(frozen=True, kw_only=True)
-class Name(ValueObject):
+class Domain(ValueObject):
     _value: str
 
     # hint
@@ -19,21 +19,21 @@ class Name(ValueObject):
     # factory
 
     @classmethod
-    def from_str(cls, value) -> "Name":
+    def from_str(cls, value) -> "Domain":
         # type
         if not isinstance(value, str):
-            raise InvalidError("Name")
+            raise InvalidError("Domain")
 
         # normalize
         normalized = value.strip()
 
         # length
         if not (0 < len(normalized) <= cls._max_length):
-            raise InvalidFormatError("Name")
+            raise InvalidFormatError("Domain")
 
         # format
         if not re.match(cls._pattern, normalized):
-            raise InvalidFormatError("Name")
+            raise InvalidFormatError("Domain")
 
         return cls(_value=normalized, by_factory=True)
 

@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from uuid import UUID
 
 from pydantic import BaseModel
 
 from personal_secret.api.core.validate import typecheck
 
-from personal_secret.api.domain.secret.kind import Kind
+from personal_secret.api.domain.secret.domain import Domain
+from personal_secret.api.domain.secret.service import Service
+from personal_secret.api.domain.secret.project import Project
 from personal_secret.api.domain.secret.secret_repository import SecretRepository
 
 from personal_secret.api.infrastructure.postgresql.client import db_client
@@ -18,34 +21,39 @@ from personal_secret.api.infrastructure.postgresql.session import transactional_
 # input
 
 class Input(BaseModel):
-    kind: str | None = None
-    tag: str | None = None
-    query: str | None = None
+    domain: str | None = None
+    service: str | None = None
+    project: str | None = None
+    limit: int | None = None
+    offset: int | None = None
 
 
 # #
 # usecase
 
 @typecheck
-async def list_secrets(*, session, input: Input) -> list[dict]:
-    # fetch
-    if input.kind is not None:
-        secrets = await SecretRepository.filter_by_kind(session=session, kind=Kind.from_str(input.kind))
-    else:
-        secrets = await SecretRepository.list_all(session=session)
+async def list_secrets(*, session, input: Input, team_id: UUID) -> list[dict]:
+    # find
+    secrets = await SecretRepository.search(
+        session=session,
+        team_id=team_id,
+        domain=(
+            Domain.from_str(input.domain) if input.domain is not None else None
+        ),
+        service=(
+            Service.from_str(input.service) if input.service is not None else None
+        ),
+        project=(
+            Project.from_str(input.project) if input.project is not None else None
+        ),
+        limit=input.limit,
+        offset=input.offset,
+    )
 
-    # filter
-    if input.tag is not None:
-        secrets = [s for s in secrets if input.tag in s.tags.to_list()]
-    if input.query is not None:
-        needle = input.query.lower()
-        secrets = [s for s in secrets if needle in s.name.to_str().lower()]
-
-    # sort
-    secrets = sorted(secrets, key=lambda s: s.name.to_str())
-
-    listed = [s.to_dict() for s in secrets]
-    return listed
+    # return
+    return [
+        s.to_dict() for s in secrets
+    ]
 
 
 # #
@@ -53,18 +61,30 @@ async def list_secrets(*, session, input: Input) -> list[dict]:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--kind", default=None)
-    parser.add_argument("--tag", default=None)
-    parser.add_argument("--query", default=None)
+    parser.add_argument("--domain", default=None)
+    parser.add_argument("--service", default=None)
+    parser.add_argument("--project", default=None)
+    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--offset", type=int, default=None)
+    parser.add_argument("--team-id", required=True)
     return parser.parse_args()
 
 async def _main():
     args = _parse_args()
     async with transactional_session(db_client.SessionLocal) as session:
-        print(await list_secrets(
-            session=session,
-            input=Input(kind=args.kind, tag=args.tag, query=args.query),
-        ))
+        print(
+            await list_secrets(
+                session=session,
+                input=Input(
+                    domain=args.domain,
+                    service=args.service,
+                    project=args.project,
+                    limit=args.limit,
+                    offset=args.offset,
+                ),
+                team_id=UUID(args.team_id),
+            )
+        )
 
 if __name__ == "__main__":
     asyncio.run(_main())

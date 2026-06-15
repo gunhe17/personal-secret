@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from uuid import UUID
 
 from pydantic import BaseModel
 
 from personal_secret.api.core.validate import typecheck
 
-from personal_secret.api.domain.common.exception import NotFoundError
 from personal_secret.api.domain.secret.secret_repository import SecretRepository
 from personal_secret.api.domain.secret.secret_event import SecretEvent
 
@@ -21,27 +21,23 @@ from personal_secret.api.infrastructure.postgresql.session import transactional_
 # input
 
 class Input(BaseModel):
-    identifier: str
+    id: str
 
 
 # #
 # usecase
 
 @typecheck
-async def delete(*, session, input: Input) -> dict:
-    # load
-    secret = await SecretRepository.find_by_identifier(session=session, identifier=input.identifier)
-    if secret is None:
-        raise NotFoundError("Secret", input.identifier)
+async def delete(*, session, input: Input, team_id: UUID) -> dict:
+    # find
+    secret = await SecretRepository.get_by_id(session=session, id=UUID(input.id), team_id=team_id)
 
-    # event(삭제) — soft-delete + 마커 한 덩어리 → 저장 + 응답
+    # delete
     event, removed = SecretEvent.deleted(
-        secret=await SecretRepository.remove_by_id(
-            session=session, 
-            id=secret.id
-        ),
+        secret=await SecretRepository.remove_by_id(session=session, id=secret.id),
     )
-    
+
+    # return
     return {
         "data": removed.to_dict(),
         "event": [
@@ -56,16 +52,20 @@ async def delete(*, session, input: Input) -> dict:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("identifier")
+    parser.add_argument("id")
+    parser.add_argument("--team-id", required=True)
     return parser.parse_args()
 
 async def _main():
     args = _parse_args()
     async with transactional_session(db_client.SessionLocal) as session:
-        print(await delete(
-            session=session,
-            input=Input(identifier=args.identifier),
-        ))
+        print(
+            await delete(
+                session=session,
+                input=Input(id=args.id),
+                team_id=UUID(args.team_id),
+            )
+        )
 
 if __name__ == "__main__":
     asyncio.run(_main())
