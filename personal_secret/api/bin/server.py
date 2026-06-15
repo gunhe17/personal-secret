@@ -7,6 +7,9 @@ from personal_secret.api.server.router import Router
 from personal_secret.api.endpoint import system
 from personal_secret.api.endpoint import command
 from personal_secret.api.endpoint import secret
+from personal_secret.api.endpoint import auth
+from personal_secret.api.endpoint import team
+from personal_secret.api.endpoint import account
 from personal_secret.api.server import exception
 
 
@@ -39,9 +42,54 @@ server.router(
     Router(path="/commands", methods=["GET"], endpoint=command.list_commands)
 )
 
+# auth
+server.router(
+    Router(path="/auth/register", methods=["POST"], endpoint=auth.post_register)
+)
+server.router(
+    Router(path="/auth/salts", methods=["GET"], endpoint=auth.get_salts)
+)
+server.router(
+    Router(path="/auth/login", methods=["POST"], endpoint=auth.post_login)
+)
+
+# account
+server.router(
+    Router(path="/accounts/public-key", methods=["GET"], endpoint=account.get_public_key)
+)
+
+# team
+server.router(
+    Router(path="/teams", methods=["POST"], endpoint=team.post_create)
+)
+server.router(
+    Router(path="/teams/{team_id}/key", methods=["GET"], endpoint=team.get_key)
+)
+server.router(
+    Router(path="/teams/{team_id}/members", methods=["POST"], endpoint=team.post_invite)
+)
+server.router(
+    Router(path="/teams/{team_id}/members/{account_id}", methods=["DELETE"], endpoint=team.delete_member)
+)
+server.router(
+    Router(path="/teams/{team_id}/rotate", methods=["POST"], endpoint=team.post_rotate)
+)
+
 # secret
 server.router(
-    Router(path="/secret", methods=["POST"], endpoint=secret.post_create)
+    Router(path="/teams/{team_id}/secrets", methods=["POST"], endpoint=secret.post_create)
+)
+server.router(
+    Router(path="/teams/{team_id}/secrets", methods=["GET"], endpoint=secret.get_list)
+)
+server.router(
+    Router(path="/teams/{team_id}/secrets/{secret_id}", methods=["GET"], endpoint=secret.get_reveal)
+)
+server.router(
+    Router(path="/teams/{team_id}/secrets/{secret_id}", methods=["PUT"], endpoint=secret.put_update)
+)
+server.router(
+    Router(path="/teams/{team_id}/secrets/{secret_id}", methods=["DELETE"], endpoint=secret.delete_secret)
 )
 
 # exception handler
