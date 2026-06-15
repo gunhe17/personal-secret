@@ -6,35 +6,22 @@ from personal_secret.api.core.exception import ClientError, DevelopError
 # #
 # base
 
-class InfrastructureError(DevelopError):
+class InfrastructureDevelopError(DevelopError):   # 5xx — 서버 책임
+    ...
+
+
+class InfrastructureClientError(ClientError):     # 4xx — 클라이언트 책임
     ...
 
 
 # #
-# specific
+# develop
 
-class DatabaseError(InfrastructureError):
+class DatabaseError(InfrastructureDevelopError):
     def __init__(self, operation: str, reason: str):
-        super().__init__(
-            message=f"\n\t 데이터베이스 오류 ({operation}): {reason}",
-            code=500,
-        )
+        super().__init__(message=f"DB 실패 (작업: {operation}, 원인: {reason})", code=500)
 
 
-class CryptoError(InfrastructureError):
+class CryptoError(InfrastructureDevelopError):
     def __init__(self, operation: str, reason: str):
-        super().__init__(
-            message=f"\n\t 암호화 오류 ({operation}): {reason}",
-            code=500,
-        )
-
-
-# #
-# locked
-
-class LockedError(ClientError):
-    def __init__(self):
-        super().__init__(
-            message="세션이 잠겨 있습니다. (unlock 먼저 실행)",
-            code=423,
-        )
+        super().__init__(message=f"crypto 실패 (작업: {operation}, 원인: {reason})", code=500)

@@ -1,70 +1,46 @@
 from __future__ import annotations
 
-import os
+import hashlib
+import secrets
 
-from argon2.low_level import Type, hash_secret_raw
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from argon2 import PasswordHasher
+from argon2.exceptions import Argon2Error, VerifyMismatchError
 
-from personal_secret.api.config import CryptoConfig
-from personal_secret.api.config import get_crypto_config
 from personal_secret.api.infrastructure.common.exception import CryptoError
 
 
 # #
-# crypto
+# crypto (서버 측 — 인증 해시 + 토큰만. 시크릿/키 암복호는 클라가 함 = E2EE)
 
 class Crypto:
-    def __init__(self, *, config: CryptoConfig):
-        self._config = config
+    def __init__(self):
+        self._password_hasher = PasswordHasher()
 
     # #
-    # key derivation
+    # password (login_proof → login_verifier 검증)
 
-    def generate_salt(self) -> bytes:
-        salt = os.urandom(self._config.SALT_LENGTH)
-        return salt
+    def hash_password(self, *, password: str) -> str:
+        return self._password_hasher.hash(password)
 
-    def generate_dek(self) -> bytes:
-        dek = os.urandom(self._config.DEK_LENGTH)
-        return dek
-
-    def derive_kek(self, *, password: str, salt: bytes) -> bytes:
+    def verify_password(self, *, hash: str, password: str) -> bool:
         try:
-            kek = hash_secret_raw(
-                secret=password.encode("utf-8"),
-                salt=salt,
-                time_cost=self._config.ARGON2_TIME_COST,
-                memory_cost=self._config.ARGON2_MEMORY_COST,
-                parallelism=self._config.ARGON2_PARALLELISM,
-                hash_len=self._config.KEK_LENGTH,
-                type=Type.ID,
-            )
-        except Exception as exc:
-            raise CryptoError(operation="derive_kek", reason=str(exc))
-        return kek
+            return self._password_hasher.verify(hash, password)
+        except VerifyMismatchError:
+            return False
+        except Argon2Error as exc:
+            raise CryptoError(operation="verify_password", reason=str(exc))
 
     # #
-    # aead
+    # token (불투명 세션 토큰 — 원본은 발급 1회만, 저장은 fingerprint)
 
-    def encrypt(self, *, key: bytes, plaintext: bytes) -> bytes:
-        # nonce(12) + ciphertext를 한 blob으로 (nonce 포맷은 crypto가 소유)
-        try:
-            nonce = os.urandom(12)
-            ciphertext = AESGCM(key).encrypt(nonce, plaintext, None)
-        except Exception as exc:
-            raise CryptoError(operation="encrypt", reason=str(exc))
-        return nonce + ciphertext
+    def generate_token(self) -> str:
+        return secrets.token_urlsafe(32)
 
-    def decrypt(self, *, key: bytes, data: bytes) -> bytes:
-        try:
-            nonce, ciphertext = data[:12], data[12:]
-            plaintext = AESGCM(key).decrypt(nonce, ciphertext, None)
-        except Exception as exc:
-            raise CryptoError(operation="decrypt", reason=str(exc))
-        return plaintext
+    def hash_token(self, *, token: str) -> str:
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 # #
 # Crypto
 
-crypto = Crypto(config=get_crypto_config())
+crypto = Crypto()
