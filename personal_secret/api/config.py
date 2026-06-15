@@ -162,104 +162,56 @@ def get_test_postgres_config() -> PostgresConfig:
 
 
 # #
-# crypto
+# outbox
 
-class CryptoConfig(ABC):
+class OutboxConfig(ABC):
     @property
     @abstractmethod
-    def ARGON2_TIME_COST(self) -> int: ...
-
-    @property
-    @abstractmethod
-    def ARGON2_MEMORY_COST(self) -> int: ...
+    def OUTBOX_POLL_INTERVAL_SEC(self) -> float: ...
 
     @property
     @abstractmethod
-    def ARGON2_PARALLELISM(self) -> int: ...
+    def OUTBOX_BATCH_SIZE(self) -> int: ...
 
     @property
     @abstractmethod
-    def KEK_LENGTH(self) -> int: ...
+    def AUDIT_LOG_PATH(self) -> str: ...
 
+
+class DefaultOutboxConfig(OutboxConfig):
+    @property
+    def OUTBOX_POLL_INTERVAL_SEC(self) -> float:
+        return float(os.environ.get("OUTBOX_POLL_INTERVAL_SEC", "1.0"))
+
+    @property
+    def OUTBOX_BATCH_SIZE(self) -> int:
+        return int(os.environ.get("OUTBOX_BATCH_SIZE", "100"))
+
+    @property
+    def AUDIT_LOG_PATH(self) -> str:
+        return os.environ.get("OUTBOX_AUDIT_LOG_PATH", "audit.log.jsonl")
+
+
+def get_outbox_config() -> OutboxConfig:
+    config = DefaultOutboxConfig()
+    return config
+
+
+# #
+# auth
+
+class AuthConfig(ABC):
     @property
     @abstractmethod
-    def DEK_LENGTH(self) -> int: ...
+    def TOKEN_TTL_SEC(self) -> int: ...
 
+
+class DefaultAuthConfig(AuthConfig):
     @property
-    @abstractmethod
-    def SALT_LENGTH(self) -> int: ...
-
-    @property
-    @abstractmethod
-    def SESSION_TTL_SEC(self) -> int: ...
+    def TOKEN_TTL_SEC(self) -> int:
+        return int(os.environ.get("AUTH_TOKEN_TTL_SEC", "2592000"))  # 30d
 
 
-class DevelopCryptoConfig(CryptoConfig):
-    @property
-    def ARGON2_TIME_COST(self) -> int:
-        return int(os.environ.get("DEVELOP_ARGON2_TIME_COST", "3"))
-
-    @property
-    def ARGON2_MEMORY_COST(self) -> int:
-        return int(os.environ.get("DEVELOP_ARGON2_MEMORY_COST", "65536"))
-
-    @property
-    def ARGON2_PARALLELISM(self) -> int:
-        return int(os.environ.get("DEVELOP_ARGON2_PARALLELISM", "4"))
-
-    @property
-    def KEK_LENGTH(self) -> int:
-        return 32
-
-    @property
-    def DEK_LENGTH(self) -> int:
-        return 32
-
-    @property
-    def SALT_LENGTH(self) -> int:
-        return 16
-
-    @property
-    def SESSION_TTL_SEC(self) -> int:
-        return int(os.environ.get("DEVELOP_SESSION_TTL_SEC", "900"))
-
-
-class ProductionCryptoConfig(CryptoConfig):
-    @property
-    def ARGON2_TIME_COST(self) -> int:
-        return int(os.environ.get("PRODUCTION_ARGON2_TIME_COST", "3"))
-
-    @property
-    def ARGON2_MEMORY_COST(self) -> int:
-        return int(os.environ.get("PRODUCTION_ARGON2_MEMORY_COST", "65536"))
-
-    @property
-    def ARGON2_PARALLELISM(self) -> int:
-        return int(os.environ.get("PRODUCTION_ARGON2_PARALLELISM", "4"))
-
-    @property
-    def KEK_LENGTH(self) -> int:
-        return 32
-
-    @property
-    def DEK_LENGTH(self) -> int:
-        return 32
-
-    @property
-    def SALT_LENGTH(self) -> int:
-        return 16
-
-    @property
-    def SESSION_TTL_SEC(self) -> int:
-        return int(os.environ.get("PRODUCTION_SESSION_TTL_SEC", "900"))
-
-
-def get_crypto_config() -> CryptoConfig:
-    env = get_app_config().APPLICATION_ENVIRONMENT
-    if env == Env.DEVELOP or env == Env.TEST:
-        config = DevelopCryptoConfig()
-    elif env == Env.PRODUCTION:
-        config = ProductionCryptoConfig()
-    else:
-        raise NotImplementedError(f"crypto config not implemented for env={env}")
+def get_auth_config() -> AuthConfig:
+    config = DefaultAuthConfig()
     return config

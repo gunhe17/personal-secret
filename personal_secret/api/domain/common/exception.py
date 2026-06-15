@@ -6,73 +6,52 @@ from personal_secret.api.core.exception import ClientError
 # #
 # base
 
-class DomainError(ClientError):
+class DomainClientError(ClientError):
     ...
 
 
 # #
 # validation
 
-class InvalidError(DomainError):
+class InvalidError(DomainClientError):
     def __init__(self, target: str = "값"):
-        super().__init__(
-            message=f"{target}: 타입이 유효하지 않습니다.",
-            code=400,
-        )
+        super().__init__(message=f"{target} 타입이 올바르지 않습니다", code=400)
 
 
-class InvalidFormatError(DomainError):
+class InvalidFormatError(DomainClientError):
     def __init__(self, target: str = "값"):
-        super().__init__(
-            message=f"{target}: 형식이 유효하지 않습니다.",
-            code=400,
-        )
+        super().__init__(message=f"{target} 형식이 올바르지 않습니다", code=400)
 
 
 # #
 # lookup
 
-class NotFoundError(DomainError):
+class NotFoundError(DomainClientError):
     def __init__(self, target: str, identifier: str):
-        super().__init__(
-            message=f"\n\t {target}, 찾을 수 없습니다. (식별자: {identifier})",
-            code=404,
-        )
+        super().__init__(message=f"{target} 찾을 수 없습니다 (식별자: {identifier})", code=404)
 
 
 # #
 # uniqueness
 
-class AlreadyExistsError(DomainError):
+class AlreadyExistsError(DomainClientError):
     def __init__(self, target: str, identifier: str):
-        super().__init__(
-            message=f"\n\t {target}, 이미 존재합니다. (식별자: {identifier})",
-            code=409,
-        )
+        super().__init__(message=f"{target} 이미 존재합니다 (식별자: {identifier})", code=409)
 
 
 # #
-# vault lifecycle
+# auth
 
-class NotInitializedError(DomainError):
+class InvalidCredentialError(DomainClientError):
     def __init__(self):
-        super().__init__(
-            message="볼트가 아직 초기화되지 않았습니다. (init 먼저 실행)",
-            code=409,
-        )
+        super().__init__(message="이메일 또는 비밀번호가 올바르지 않습니다", code=401)
 
 
-class AlreadyInitializedError(DomainError):
+class UnauthorizedError(DomainClientError):
     def __init__(self):
-        super().__init__(
-            message="볼트가 이미 초기화되어 있습니다.",
-            code=409,
-        )
+        super().__init__(message="인증이 필요합니다", code=401)
 
 
-class InvalidMasterPasswordError(DomainError):
-    def __init__(self):
-        super().__init__(
-            message="마스터 비밀번호가 올바르지 않습니다.",
-            code=401,
-        )
+class ForbiddenError(DomainClientError):
+    def __init__(self, target: str = "리소스"):
+        super().__init__(message=f"{target}에 대한 권한이 없습니다", code=403)
