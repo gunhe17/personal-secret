@@ -1,5 +1,8 @@
 {
   "permissions": {
+    "allow": [
+      "Read(.claude/docs/**)"
+    ],
     "deny": [
       "Read(**/.env)",
       "Read(**/.env.*)",
