@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import httpx
 
 from personal_secret.cli.config import CliConfig
@@ -15,33 +17,62 @@ class Api:
         self._config = config
 
     # #
+    # auth
+
+    def login(self, *, email: str, password: str) -> dict:
+        result = self._request(
+            method="POST",
+            path="/auth/login",
+            body={"email": email, "password": password},
+        )
+        self._save_token(token=result["data"]["token"])
+        return result
+
+    def _save_token(self, *, token: str) -> None:
+        path = self._config.TOKEN_PATH
+        directory = os.path.dirname(path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(token)
+
+    def _load_token(self) -> str | None:
+        path = self._config.TOKEN_PATH
+        if not os.path.exists(path):
+            return None
+        with open(path, encoding="utf-8") as f:
+            return f.read().strip() or None
+
+    # #
     # secret
 
-    def create(self, *, kind: str, name: str, tags: list[str], expires_at: str | None, data: dict) -> dict:
-        body = {"kind": kind, "name": name, "tags": tags, "expires_at": expires_at, "data": data}
+    def create(self, *, domain: str, service: str, project: str, field: str, value: str) -> dict:
+        body = {"domain": domain, "service": service, "project": project, "field": field, "value": value}
         return self._request(method="POST", path="/secret", body=body)
 
-    def list(self, *, kind: str | None, tag: str | None, query: str | None) -> list[dict]:
-        params = {k: v for k, v in {"kind": kind, "tag": tag, "query": query}.items() if v is not None}
+    def list(self, *, domain: str | None, service: str | None, project: str | None) -> list[dict]:
+        params = {k: v for k, v in {"domain": domain, "service": service, "project": project}.items() if v is not None}
         return self._request(method="GET", path="/secret", params=params)
 
-    def reveal(self, *, identifier: str) -> dict:
-        return self._request(method="GET", path=f"/secret/{identifier}/reveal")
+    def reveal(self, *, id: str) -> dict:
+        return self._request(method="GET", path=f"/secret/{id}/reveal")
 
-    def update(self, *, identifier: str, name: str, tags: list[str], expires_at: str | None, data: dict | None) -> dict:
-        body = {"identifier": identifier, "name": name, "tags": tags, "expires_at": expires_at, "data": data}
+    def update(self, *, id: str, value: str) -> dict:
+        body = {"id": id, "value": value}
         return self._request(method="POST", path="/secret/update", body=body)
 
-    def delete(self, *, identifier: str) -> dict:
-        return self._request(method="DELETE", path=f"/secret/{identifier}")
-
-    def expiring(self, *, within_days: int) -> list[dict]:
-        return self._request(method="GET", path="/secret/expiring", params={"within_days": within_days})
+    def delete(self, *, id: str) -> dict:
+        return self._request(method="DELETE", path=f"/secret/{id}")
 
     # #
     # internal
 
     def _request(self, *, method: str, path: str, body: dict | None = None, params: dict | None = None):
+        headers = {"X-Requested-By": "personal-secret-cli"}
+        token = self._load_token()
+        if token is not None:
+            headers["Authorization"] = f"Bearer {token}"
         try:
             with httpx.Client(base_url=self._config.API_BASE_URL, timeout=30.0) as http:
                 response = http.request(
@@ -49,10 +80,10 @@ class Api:
                     path,
                     json=body,
                     params=params,
-                    headers={"X-Requested-By": "personal-secret-cli"},
+                    headers=headers,
                 )
         except httpx.ConnectError:
-            raise ApiError(f"서버에 연결할 수 없습니다 ({self._config.API_BASE_URL}). 컨테이너가 떠 있는지 확인하세요.")
+            raise ApiError(f"서버에 연결할 수 없습니다 (식별자: {self._config.API_BASE_URL}, 조치: 컨테이너 확인)")
 
         if response.status_code >= 400:
             try:
