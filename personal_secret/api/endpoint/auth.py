@@ -19,19 +19,19 @@ from personal_secret.api.domain.account_team.account_team_repository import Acco
 from personal_secret.api.infrastructure.crypto.client import crypto
 from personal_secret.api.infrastructure.postgresql.session import transactional_session_helper
 
-from personal_secret.api.usecase.auth import register
-from personal_secret.api.usecase.auth import login
-from personal_secret.api.usecase.auth import salts
+from personal_secret.api.usecase import auth_register
+from personal_secret.api.usecase import auth_login
+from personal_secret.api.usecase import auth_get_only_salts
 
 
 # #
 # command
 
 async def post_register(
-    body: register.Input,
+    body: auth_register.Input,
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
-    registered = await register.register(session=session, input=body)
+    registered = await auth_register.register(session=session, input=body)
     return JSONResponse(status_code=200, content=registered)
 
 
@@ -39,15 +39,15 @@ async def get_salts(
     email: str,
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
-    found = await salts.salts(session=session, input=salts.Input(email=email))
+    found = await auth_get_only_salts.get_only_salts(session=session, input=auth_get_only_salts.Input(email=email))
     return JSONResponse(status_code=200, content=found)
 
 
 async def post_login(
-    body: login.Input,
+    body: auth_login.Input,
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
-    logged_in = await login.login(session=session, input=body)
+    logged_in = await auth_login.login(session=session, input=body)
     return JSONResponse(status_code=200, content=logged_in)
 
 

@@ -10,7 +10,7 @@ from personal_secret.api.infrastructure.postgresql.session import transactional_
 
 from personal_secret.api.endpoint.auth import require_auth
 
-from personal_secret.api.usecase.account import public_key
+from personal_secret.api.usecase import account_get_only_public_key
 
 
 # #
@@ -18,8 +18,8 @@ from personal_secret.api.usecase.account import public_key
 
 async def get_public_key(
     email: str,
-    _account_id: UUID = Depends(require_auth),
+    account_id: UUID = Depends(require_auth),
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
-    found = await public_key.public_key(session=session, input=public_key.Input(email=email))
+    found = await account_get_only_public_key.get_only_public_key(session=session, input=account_get_only_public_key.Input(email=email), actor_id=account_id)
     return JSONResponse(status_code=200, content=found)

@@ -14,21 +14,22 @@ from personal_secret.api.endpoint.auth import require_auth
 from personal_secret.api.endpoint.auth import require_member
 from personal_secret.api.endpoint.auth import require_owner
 
-from personal_secret.api.usecase.team import create
-from personal_secret.api.usecase.team import invite
-from personal_secret.api.usecase.team import remove
-from personal_secret.api.usecase.team import rotate
+from personal_secret.api.usecase import team_create
+from personal_secret.api.usecase import team_get_only_key
+from personal_secret.api.usecase import team_invite
+from personal_secret.api.usecase import team_remove
+from personal_secret.api.usecase import team_rotate
 
 
 # #
 # command
 
 async def post_create(
-    body: create.Input,
+    body: team_create.Input,
     account_id: UUID = Depends(require_auth),
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
-    created = await create.create(session=session, input=body, account_id=account_id)
+    created = await team_create.create(session=session, input=body, account_id=account_id)
     return JSONResponse(status_code=200, content=created)
 
 
@@ -37,7 +38,8 @@ async def get_key(
     membership: AccountTeam = Depends(require_member),
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
-    return JSONResponse(status_code=200, content={"data": membership.to_member_key()})
+    keyed = await team_get_only_key.get_only_key(session=session, input=team_get_only_key.Input(), team_id=team_id, actor_id=membership.account_id)
+    return JSONResponse(status_code=200, content=keyed)
 
 
 # #
@@ -45,29 +47,29 @@ async def get_key(
 
 async def post_invite(
     team_id: UUID,
-    body: invite.Input,
-    _owner: AccountTeam = Depends(require_owner),
+    body: team_invite.Input,
+    owner: AccountTeam = Depends(require_owner),
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
-    invited = await invite.invite(session=session, input=body, team_id=team_id)
+    invited = await team_invite.invite(session=session, input=body, team_id=team_id, actor_id=owner.account_id)
     return JSONResponse(status_code=200, content=invited)
 
 
 async def delete_member(
     team_id: UUID,
     account_id: UUID,
-    _owner: AccountTeam = Depends(require_owner),
+    owner: AccountTeam = Depends(require_owner),
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
-    removed = await remove.remove(session=session, input=remove.Input(account_id=str(account_id)), team_id=team_id)
+    removed = await team_remove.remove(session=session, input=team_remove.Input(account_id=str(account_id)), team_id=team_id, actor_id=owner.account_id)
     return JSONResponse(status_code=200, content=removed)
 
 
 async def post_rotate(
     team_id: UUID,
-    body: rotate.Input,
-    _owner: AccountTeam = Depends(require_owner),
+    body: team_rotate.Input,
+    owner: AccountTeam = Depends(require_owner),
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
-    rotated = await rotate.rotate(session=session, input=body, team_id=team_id)
+    rotated = await team_rotate.rotate(session=session, input=body, team_id=team_id, actor_id=owner.account_id)
     return JSONResponse(status_code=200, content=rotated)
