@@ -9,13 +9,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from personal_secret.api.core.model import Model
 
-from personal_secret.api.domain.common.exception import AlreadyExistsError
+from personal_secret.api.domain.common.exception import AlreadyExistsError, NotFoundError
 
 from personal_secret.api.domain.account_team.account_team import AccountTeam
 from personal_secret.api.domain.account_team.role import Role
 from personal_secret.api.domain.account_team.team_locked_key import TeamLockedKey
 
 from personal_secret.api.infrastructure.postgresql.repository import PostgresRepository
+from personal_secret.api.infrastructure.postgresql.exception import UniqueViolationError
 
 
 # #
@@ -105,12 +106,13 @@ class AccountTeamRepository(PostgresRepository[AccountTeam, AccountTeamModel]):
 
     @classmethod
     async def add_unique_by_account_and_team(cls, *, session: AsyncSession, entity: AccountTeam) -> AccountTeam:
-        existing = await cls.find_by_account_and_team(
-            session=session,
-            account_id=entity.account_id,
-            team_id=entity.team_id,
-        )
-        if existing is not None:
+        try:
+            await cls._ensure_unique(
+                session=session,
+                entity=entity,
+                unique=[("account_id", "team_id")],
+            )
+        except UniqueViolationError:
             raise AlreadyExistsError("AccountTeam", f"{entity.account_id}/{entity.team_id}")
         return await cls.add(session=session, entity=entity)
 
@@ -134,6 +136,23 @@ class AccountTeamRepository(PostgresRepository[AccountTeam, AccountTeamModel]):
         )
 
     @classmethod
+    async def get_by_account_and_team(
+        cls,
+        *,
+        session: AsyncSession,
+        account_id: UUID,
+        team_id: UUID,
+    ) -> AccountTeam:
+        membership = await cls.find_by_account_and_team(
+            session=session,
+            account_id=account_id,
+            team_id=team_id,
+        )
+        if membership is None:
+            raise NotFoundError("AccountTeam", f"{account_id}/{team_id}")
+        return membership
+
+    @classmethod
     async def filter_by_team(cls, *, session: AsyncSession, team_id: UUID) -> list[AccountTeam]:
         return await cls._filter_by(session=session, column="team_id", value=team_id)
 
@@ -151,12 +170,10 @@ class AccountTeamRepository(PostgresRepository[AccountTeam, AccountTeamModel]):
         session: AsyncSession,
         account_id: UUID,
         team_id: UUID,
-    ) -> AccountTeam | None:
-        membership = await cls.find_by_account_and_team(
+    ) -> AccountTeam:
+        membership = await cls.get_by_account_and_team(
             session=session,
             account_id=account_id,
             team_id=team_id,
         )
-        if membership is None:
-            return None
         return await cls.remove_by_id(session=session, id=membership.id)

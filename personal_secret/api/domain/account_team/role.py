@@ -30,7 +30,7 @@ class Role(ValueObject):
 
     @classmethod
     def owner(cls) -> "Role":
-        return cls(_value="owner", by_factory=True)
+        return cls.from_str("owner")
 
     # #
     # query

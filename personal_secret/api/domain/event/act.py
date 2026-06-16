@@ -7,38 +7,26 @@ from personal_secret.api.domain.common.exception import InvalidError, InvalidFor
 
 
 @dataclass(frozen=True, kw_only=True)
-class Status(ValueObject):
+class Act(ValueObject):
     _value: str
 
     # hint
-    _allowed_list: tuple[str, ...] = ("pending", "succeeded", "failed")
+    _allowed_list: tuple[str, ...] = ("created", "updated", "deleted", "rotated", "read")
 
     # #
     # factory
 
     @classmethod
-    def from_str(cls, value) -> "Status":
+    def from_str(cls, value) -> "Act":
         # type
         if not isinstance(value, str):
-            raise InvalidError("Status")
+            raise InvalidError("Act")
 
         # format
         if value not in cls._allowed_list:
-            raise InvalidFormatError("Status")
+            raise InvalidFormatError("Act")
 
         return cls(_value=value, by_factory=True)
-
-    @classmethod
-    def pending(cls) -> "Status":
-        return cls(_value="pending", by_factory=True)
-
-    @classmethod
-    def succeeded(cls) -> "Status":
-        return cls(_value="succeeded", by_factory=True)
-
-    @classmethod
-    def failed(cls) -> "Status":
-        return cls(_value="failed", by_factory=True)
 
     # #
     # query

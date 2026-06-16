@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>personal_secret · domain ER</title>
+<style>
+  :root{--bg:#0d1117;--panel:#161b22;--line:#2b3340;--fg:#e6edf3;--muted:#9aa7b4;
+    --teal:#39c5bb;--blue:#6ea8fe;--violet:#bb9af7;--green:#56d364;--amber:#e3b341;--gray:#8b949e;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:13px/1.5 -apple-system,"Segoe UI",Roboto,"Noto Sans KR",sans-serif}
+  #bar{position:fixed;top:0;left:0;right:0;height:42px;display:flex;align-items:center;gap:14px;
+    padding:0 16px;background:rgba(13,17,23,.92);border-bottom:1px solid var(--line);z-index:10}
+  #bar b{font-size:14px} #bar .muted{color:var(--muted);font-size:12px}
+  #bar .src{font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line)}
+  #bar .src.live{color:var(--green);border-color:rgba(86,211,100,.4)}
+  #bar .src.err{color:var(--amber);border-color:rgba(227,179,65,.4)}
+  #bar button{font:inherit;font-size:12px;background:#1c2330;color:var(--fg);border:1px solid var(--line);border-radius:7px;padding:5px 11px;cursor:pointer}
+  #bar button:hover{border-color:var(--blue)}
+  #stage{position:absolute;inset:42px 0 0 0;overflow:auto}
+  #canvas{position:relative;width:2400px;height:1600px}
+  #lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  #msg{position:fixed;inset:42px 0 0 0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--muted);text-align:center}
+  #msg code{font-family:var(--mono);color:var(--fg);background:var(--panel);padding:3px 8px;border-radius:6px;border:1px solid var(--line)}
+  .tbl{position:absolute;width:208px;background:var(--panel);border:1px solid var(--line);
+    border-radius:10px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.35);user-select:none}
+  .tbl .hd{padding:7px 11px;font-family:var(--mono);font-weight:700;font-size:13px;cursor:grab;
+    border-bottom:1px solid var(--line);display:flex;align-items:center;gap:7px}
+  .tbl .hd .dot{width:8px;height:8px;border-radius:50%}
+  .tbl .col{display:flex;align-items:center;gap:6px;padding:3px 11px;font-family:var(--mono);font-size:11.5px;border-top:1px solid #1f2630}
+  .tbl .col .nm{flex:1;color:var(--fg)} .tbl .col.fkrow .nm{color:var(--blue)}
+  .tbl .col .ty{color:var(--muted);font-size:10.5px}
+  .tbl .col .bd{font-size:10px;width:12px;text-align:center}
+  .tbl .uq{padding:4px 11px;font-size:10px;color:var(--amber);font-family:var(--mono);border-top:1px solid #1f2630;background:rgba(227,179,65,.05)}
+  .legend{position:fixed;bottom:12px;left:16px;font-size:11px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap}
+  .legend b{color:var(--fg)}
+  path.rel{fill:none;stroke:var(--blue);stroke-width:1.6;opacity:.55}
+</style>
+</head>
+<body>
+<div id="bar">
+  <b>domain ER</b>
+  <span class="src" id="src">…</span>
+  <span class="muted" id="meta"></span>
+  <span style="flex:1"></span>
+  <button onclick="load()">새로고침</button>
+  <button onclick="autoLayout();draw()">정렬</button>
+  <span class="muted">박스 드래그 · 데이터: <span style="font-family:var(--mono)">GET /system/schema</span></span>
+</div>
+<div id="stage"><div id="canvas"><svg id="lines"></svg></div></div>
+<div id="msg">
+  <div>스키마를 못 불러왔어요.</div>
+  <div>서버에서 <code>/system/er</code> 로 열거나 <code>?api=http://host:port</code> 로 지정하세요.</div>
+</div>
+<div class="legend">
+  <span>🔑 PK</span><span>◆ unique</span><span><b style="color:var(--blue)">→</b> FK</span>
+  <span>색: <b style="color:var(--blue)">계정</b>·<b style="color:var(--violet)">테넌시</b>·<b style="color:var(--teal)">시크릿</b>·<b style="color:var(--green)">이벤트</b>·<b style="color:var(--gray)">설정</b></span>
+</div>
+
+<script>
+let SCHEMA = null;
+const API = new URLSearchParams(location.search).get("api") || "";  // 기본 same-origin
+const COLOR = {accounts:"--blue",tokens:"--blue",teams:"--violet",account_team:"--violet",
+  secrets:"--teal",events:"--green",settings:"--gray"};
+const SKIP = new Set(["created_at","updated_at","deleted_at"]);
+
+const canvas = document.getElementById("canvas");
+let svg = document.getElementById("lines");
+let boxes = {};
+
+function cssvar(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+
+async function load(){
+  const tag = document.getElementById("src");
+  try{
+    const r = await fetch(API + "/system/schema", {cache:"no-store"});
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    SCHEMA = await r.json();
+    tag.textContent = "live"; tag.className = "src live";
+    document.getElementById("msg").style.display = "none";
+    document.getElementById("stage").style.display = "block";
+    render();
+  }catch(e){
+    tag.textContent = "오류"; tag.className = "src err";
+    document.getElementById("stage").style.display = "none";
+    document.getElementById("msg").style.display = "flex";
+  }
+}
+
+function render(){
+  canvas.innerHTML = '<svg id="lines"></svg>';
+  svg = document.getElementById("lines");
+  boxes = {};
+  SCHEMA.tables.forEach(makeBox);
+  autoLayout();
+  draw();
+  document.getElementById("meta").textContent =
+    `${SCHEMA.tables.length} tables · ${SCHEMA.rels.length} relations`;
+}
+
+function makeBox(t){
+  const el = document.createElement("div");
+  el.className = "tbl";
+  const color = cssvar(COLOR[t.name] || "--gray");
+  const cols = t.columns.filter(c => !SKIP.has(c.name));
+  el.innerHTML =
+    `<div class="hd"><span class="dot" style="background:${color}"></span>${t.name}</div>` +
+    cols.map(c =>
+      `<div class="col${c.fk?' fkrow':''}">`+
+        `<span class="bd">${c.pk?'🔑':(c.fk?'<span style="color:'+cssvar('--blue')+'">→</span>':(c.unique?'◆':''))}</span>`+
+        `<span class="nm">${c.name}${c.nullable?'<span style="color:#6b7681">?</span>':''}</span>`+
+        `<span class="ty">${c.type}${c.fk?' →'+c.fk:''}</span>`+
+      `</div>`).join("") +
+    t.composite_unique.map(u => `<div class="uq">◆ ${u.join(" + ")}</div>`).join("");
+  el.style.borderColor = color + "55";
+  canvas.appendChild(el);
+  boxes[t.name] = {el, x:0, y:0, w:208, h:el.offsetHeight};
+  el.querySelector(".hd").addEventListener("mousedown", e => startDrag(t.name, e));
+}
+
+function place(name,x,y){const b=boxes[name];if(!b)return;b.x=x;b.y=y;b.el.style.left=x+"px";b.el.style.top=y+"px";}
+
+function autoLayout(){
+  if(!SCHEMA)return;
+  const pinned = ["accounts","tokens","teams","account_team","secrets","events","settings"];
+  const order = pinned.filter(n=>boxes[n])
+    .concat(SCHEMA.tables.map(t=>t.name).filter(n=>!pinned.includes(n)));
+  const COLS=4, GAPX=44, GAPY=28, X0=40, Y0=30, W=208;
+  const colH = new Array(COLS).fill(Y0);
+  order.forEach((name,i)=>{
+    const c = i % COLS;
+    place(name, X0 + c*(W+GAPX), colH[c]);
+    colH[c] += boxes[name].h + GAPY;
+  });
+}
+
+let drag=null;
+function startDrag(name,e){
+  const b=boxes[name];
+  drag={name, dx:e.clientX-b.x, dy:e.clientY-b.y};
+  b.el.querySelector(".hd").style.cursor="grabbing";
+  e.preventDefault();
+}
+window.addEventListener("mousemove",e=>{
+  if(!drag)return;
+  place(drag.name, Math.max(0,e.clientX-drag.dx), Math.max(0,e.clientY-drag.dy));
+  draw();
+});
+window.addEventListener("mouseup",()=>{
+  if(drag){boxes[drag.name].el.querySelector(".hd").style.cursor="grab";drag=null;}
+});
+
+function rowY(tname,col){
+  const t=SCHEMA.tables.find(x=>x.name===tname);
+  const cols=t.columns.filter(c=>!SKIP.has(c.name));
+  const i=cols.findIndex(c=>c.name===col);
+  return 30 + i*21 + 10;
+}
+function draw(){
+  if(!SCHEMA)return;
+  for(const n in boxes){boxes[n].h = boxes[n].el.offsetHeight;}
+  let d="";
+  for(const r of SCHEMA.rels){
+    const from=boxes[r.from], to=boxes[r.to];
+    if(!from||!to)continue;
+    const toRight = (to.x >= from.x);
+    const ax = from.x + (toRight? from.w : 0), ay = from.y + rowY(r.from, r.col);
+    const bx = to.x + (toRight? 0 : to.w), by = to.y + 18;
+    const cx = Math.max(40, Math.abs(bx-ax)*0.5), dir = toRight?1:-1;
+    d += `M ${ax} ${ay} C ${ax+dir*cx} ${ay}, ${bx-dir*cx} ${by}, ${bx} ${by} `;
+  }
+  svg.innerHTML = `<path class="rel" d="${d}"/>`;
+}
+
+load();
+</script>
+</body>
+</html>

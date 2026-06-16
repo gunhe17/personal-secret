@@ -56,9 +56,9 @@ class AccountTeam(Entity):
             "role": self.role.to_str(),
         }
 
-    def to_member_key(self):
+    def to_keys(self):
         return {
-            "team_locked_key": self.team_locked_key.to_str()
+            "team_locked_key": self.team_locked_key.to_str(),
         }
 
     def to_model(self):

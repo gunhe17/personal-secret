@@ -108,7 +108,7 @@ class SettingRepository(PostgresRepository[Setting, SettingModel]):
 
     @classmethod
     async def set_by_key(cls, *, session: AsyncSession, key: Key, value: Value) -> Setting:
-        # upsert — 있으면 value 교체, 없으면 생성
+        # upsert
         existing = await cls.find_by_key(session=session, key=key)
         if existing is not None:
             updated = await cls.update(session=session, entity=existing.with_value(value))

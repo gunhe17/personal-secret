@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, String, Uuid, func
+from sqlalchemy import DateTime, Index, String, Uuid, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -33,7 +33,6 @@ class TokenModel(Model):
     fingerprint: Mapped[str] = mapped_column(
         String,
         nullable=False,
-        unique=True,
     )
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -52,6 +51,15 @@ class TokenModel(Model):
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+    )
+
+    __table_args__ = (
+        Index(
+            "uq_tokens_fingerprint_active",
+            "fingerprint",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
 
 

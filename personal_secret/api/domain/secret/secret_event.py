@@ -14,6 +14,7 @@ class SecretEventKind(Enum):
     CREATED = "created"
     UPDATED = "updated"
     DELETED = "deleted"
+    READ = "read"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -31,28 +32,38 @@ class SecretEvent(Event):
 
     @classmethod
     @typecheck
-    def updated(cls, *, secret: Secret) -> "SecretEvent":
-        return cls(_kind=SecretEventKind.UPDATED, secret=secret)
+    def updated(cls, *, secret: Secret) -> tuple["SecretEvent", Secret]:
+        return cls(_kind=SecretEventKind.UPDATED, secret=secret), secret
 
     @classmethod
     @typecheck
     def deleted(cls, *, secret: Secret) -> tuple["SecretEvent", Secret]:
         return cls(_kind=SecretEventKind.DELETED, secret=secret), secret
 
+    @classmethod
+    @typecheck
+    def read(cls, *, secret: Secret) -> tuple["SecretEvent", Secret]:
+        return cls(_kind=SecretEventKind.READ, secret=secret), secret
+
+    @classmethod
+    @typecheck
+    def read_many(cls, *, secrets: list) -> list[tuple["SecretEvent", Secret]]:
+        return [
+            (cls(_kind=SecretEventKind.READ, secret=secret), secret)
+            for secret in secrets
+        ]
+
     # #
     # query
 
-    def entity_name(self) -> str:
-        return "secret"
-
-    def entity_action(self) -> str:
+    def act(self) -> str:
         return self._kind.value
 
-    def entity_id(self) -> UUID:
-        return self.secret.id
+    def act_entity_name(self) -> str:
+        return "secret"
 
-    def team_id(self) -> UUID:
-        return self.secret.team_id
+    def act_entity_id(self) -> UUID:
+        return self.secret.id
 
     def payload(self) -> dict:
         # 평문 식별자만 — value(암호문)는 절대 싣지 않는다
@@ -61,11 +72,4 @@ class SecretEvent(Event):
             "service": self.secret.service.to_str(),
             "project": self.secret.project.to_str(),
             "field": self.secret.field.to_str(),
-        }
-
-    def to_dict(self) -> dict:
-        return {
-            "entity_name": self.entity_name(),
-            "entity_action": self._kind.value,
-            "secret_id": str(self.secret.id),
         }

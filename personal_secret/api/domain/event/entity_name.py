@@ -11,7 +11,7 @@ class EntityName(ValueObject):
     _value: str
 
     # hint
-    _allowed_list: tuple[str, ...] = ("secret",)
+    _allowed_list: tuple[str, ...] = ("secret", "team", "account_team", "account", "token", "setting")
 
     # #
     # factory

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from personal_secret.api.core.model import Model
 
-from personal_secret.api.domain.common.exception import AlreadyExistsError
+from personal_secret.api.domain.common.exception import AlreadyExistsError, InvalidCredentialError, NotFoundError
 
 from personal_secret.api.domain.account.account import Account
 from personal_secret.api.domain.account.email import Email
@@ -126,3 +126,18 @@ class AccountRepository(PostgresRepository[Account, AccountModel]):
     @classmethod
     async def find_by_email(cls, *, session: AsyncSession, email: Email) -> Account | None:
         return await cls._find_by(session=session, column="email", value=email.to_str())
+
+    @classmethod
+    async def get_by_email(cls, *, session: AsyncSession, email: Email) -> Account:
+        account = await cls.find_by_email(session=session, email=email)
+        if account is None:
+            raise NotFoundError("Account", email.to_str())
+        return account
+
+    @classmethod
+    async def verify_email(cls, *, session: AsyncSession, email: Email) -> Account:
+        # 부재 = InvalidCredentialError (NotFound 아님) — 로그인이 이메일 존재 여부 노출 안 하게
+        account = await cls.find_by_email(session=session, email=email)
+        if account is None:
+            raise InvalidCredentialError()
+        return account

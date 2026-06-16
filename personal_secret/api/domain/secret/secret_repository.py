@@ -19,6 +19,7 @@ from personal_secret.api.domain.secret.field import Field
 from personal_secret.api.domain.secret.ciphertext import Ciphertext
 
 from personal_secret.api.infrastructure.postgresql.repository import PostgresRepository
+from personal_secret.api.infrastructure.postgresql.exception import UniqueViolationError
 
 
 # #
@@ -125,16 +126,13 @@ class SecretRepository(PostgresRepository[Secret, SecretModel]):
 
     @classmethod
     async def add_unique_by_path(cls, *, session: AsyncSession, entity: Secret) -> Secret:
-        # composite unique (team_id 포함) — base _ensure_unique 는 컬럼별 독립 검사라 직접
-        existing = await cls.find_by_path(
-            session=session,
-            team_id=entity.team_id,
-            domain=entity.domain,
-            service=entity.service,
-            project=entity.project,
-            field=entity.field,
-        )
-        if existing is not None:
+        try:
+            await cls._ensure_unique(
+                session=session,
+                entity=entity,
+                unique=[("team_id", "domain", "service", "project", "field")],
+            )
+        except UniqueViolationError:
             raise AlreadyExistsError("Secret", _path(entity))
         return await cls.add(session=session, entity=entity)
 
