@@ -8,9 +8,10 @@ from pydantic import BaseModel
 
 from personal_secret.api.core.validate import typecheck
 
-from personal_secret.api.domain.common.exception import NotFoundError
-
 from personal_secret.api.domain.account_team.account_team_repository import AccountTeamRepository
+from personal_secret.api.domain.account_team.account_team_event import AccountTeamEvent
+
+from personal_secret.api.domain.event.event_repository import EventRepository
 
 from personal_secret.api.infrastructure.postgresql.client import db_client
 from personal_secret.api.infrastructure.postgresql.session import transactional_session
@@ -20,25 +21,37 @@ from personal_secret.api.infrastructure.postgresql.session import transactional_
 # input
 
 class Input(BaseModel):
-    account_id: str
+    pass
 
 
 # #
 # usecase
 
 @typecheck
-async def remove(*, session, input: Input, team_id: UUID) -> dict:
-    # 멤버십 삭제 → team_key 경로 차단 (전방안전성은 rotate 로 별도)
-    removed = await AccountTeamRepository.remove_by_account_and_team(
-        session=session,
-        account_id=UUID(input.account_id),
-        team_id=team_id,
+async def get_only_key(*, session, input: Input, team_id: UUID, actor_id: UUID) -> dict:
+    # find
+    event, membership = AccountTeamEvent.read(
+        membership=(
+            await AccountTeamRepository.get_by_account_and_team(
+                session=session,
+                account_id=actor_id,
+                team_id=team_id,
+            )
+        )
     )
-    if removed is None:
-        raise NotFoundError("AccountTeam", input.account_id)
+
+    # emit
+    await EventRepository.emit(
+        session=session,
+        events=[event],
+        actor_id=actor_id,
+        actor_team_id=team_id,
+    )
 
     # return
-    return {"data": removed.to_dict()}
+    return {
+        "data": membership.to_keys(),
+    }
 
 
 # #
@@ -54,10 +67,11 @@ async def _main():
     args = _parse_args()
     async with transactional_session(db_client.SessionLocal) as session:
         print(
-            await remove(
+            await get_only_key(
                 session=session,
-                input=Input(account_id=args.account_id),
+                input=Input(),
                 team_id=UUID(args.team_id),
+                actor_id=UUID(args.account_id),
             )
         )
 

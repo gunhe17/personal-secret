@@ -7,10 +7,11 @@ from pydantic import BaseModel
 
 from personal_secret.api.core.validate import typecheck
 
-from personal_secret.api.domain.common.exception import NotFoundError
-
 from personal_secret.api.domain.account.email import Email
 from personal_secret.api.domain.account.account_repository import AccountRepository
+from personal_secret.api.domain.account.account_event import AccountEvent
+
+from personal_secret.api.domain.event.event_repository import EventRepository
 
 from personal_secret.api.infrastructure.postgresql.client import db_client
 from personal_secret.api.infrastructure.postgresql.session import transactional_session
@@ -27,21 +28,29 @@ class Input(BaseModel):
 # usecase
 
 @typecheck
-async def salts(*, session, input: Input) -> dict:
-    # 로그인 전 단계 — 클라가 login_proof/personal_unlock_key 도출에 쓸 소금만 내려줌(공개)
-    account = await AccountRepository.find_by_email(
-        session=session,
-        email=Email.from_str(input.email),
+async def get_only_salts(*, session, input: Input) -> dict:
+    # find
+    event, account = AccountEvent.read(
+        account=(
+            await AccountRepository.get_by_email(
+                session=session,
+                email=Email.from_str(input.email),
+            )
+        )
     )
-    if account is None:
-        raise NotFoundError("Account", input.email)
+
+    # emit
+    await EventRepository.emit(
+        session=session,
+        events=[event],
+    )
 
     # return
     return {
         "data": {
             "personal_unlock_salt": account.personal_unlock_salt.to_str(),
             "login_salt": account.login_salt.to_str(),
-        }
+        },
     }
 
 
@@ -57,7 +66,7 @@ async def _main():
     args = _parse_args()
     async with transactional_session(db_client.SessionLocal) as session:
         print(
-            await salts(
+            await get_only_salts(
                 session=session,
                 input=Input(email=args.email),
             )

@@ -12,6 +12,9 @@ from personal_secret.api.domain.secret.domain import Domain
 from personal_secret.api.domain.secret.service import Service
 from personal_secret.api.domain.secret.project import Project
 from personal_secret.api.domain.secret.secret_repository import SecretRepository
+from personal_secret.api.domain.secret.secret_event import SecretEvent
+
+from personal_secret.api.domain.event.event_repository import EventRepository
 
 from personal_secret.api.infrastructure.postgresql.client import db_client
 from personal_secret.api.infrastructure.postgresql.session import transactional_session
@@ -32,28 +35,40 @@ class Input(BaseModel):
 # usecase
 
 @typecheck
-async def list_secrets(*, session, input: Input, team_id: UUID) -> list[dict]:
+async def list_secrets(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> dict:
     # find
-    secrets = await SecretRepository.search(
+    founds = SecretEvent.read_many(
+        secrets=(
+            await SecretRepository.search(
+                session=session,
+                team_id=team_id,
+                domain=(
+                    Domain.from_str(input.domain) if input.domain is not None else None
+                ),
+                service=(
+                    Service.from_str(input.service) if input.service is not None else None
+                ),
+                project=(
+                    Project.from_str(input.project) if input.project is not None else None
+                ),
+                limit=input.limit,
+                offset=input.offset,
+            )
+        )
+    )
+
+    # emit
+    await EventRepository.emit(
         session=session,
-        team_id=team_id,
-        domain=(
-            Domain.from_str(input.domain) if input.domain is not None else None
-        ),
-        service=(
-            Service.from_str(input.service) if input.service is not None else None
-        ),
-        project=(
-            Project.from_str(input.project) if input.project is not None else None
-        ),
-        limit=input.limit,
-        offset=input.offset,
+        events=[event for event, _ in founds],
+        actor_id=actor_id,
+        actor_team_id=team_id,
     )
 
     # return
-    return [
-        s.to_dict() for s in secrets
-    ]
+    return {
+        "data": [secret.to_dict() for _, secret in founds],
+    }
 
 
 # #

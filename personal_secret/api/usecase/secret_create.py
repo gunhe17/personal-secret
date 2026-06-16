@@ -38,7 +38,7 @@ class Input(BaseModel):
 # usecase
 
 @typecheck
-async def create(*, session, input: Input, team_id: UUID) -> dict:
+async def create(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> dict:
     # persist
     event, entity = SecretEvent.created(
         secret=(
@@ -50,19 +50,27 @@ async def create(*, session, input: Input, team_id: UUID) -> dict:
                     service=Service.from_str(input.service),
                     project=Project.from_str(input.project),
                     field=Field.from_str(input.field),
-                    # value 는 클라가 team_key 로 이미 암호화한 ciphertext(base64) — 서버는 저장만
+                    # value 는 클라가 team_key 로 이미 암호화한 ciphertext(base64)
                     value=Ciphertext.from_str(input.value),
                 ),
             )
         )
     )
 
+    # return
     return {
         "data": entity.to_dict(),
         "event": [
             event.to_dict()
-            for event in (await EventRepository.emit(session=session, events=[event]))
-        ]
+            for event in (
+                await EventRepository.emit(
+                    session=session,
+                    events=[event],
+                    actor_id=actor_id,
+                    actor_team_id=team_id,
+                )
+            )
+        ],
     }
 
 

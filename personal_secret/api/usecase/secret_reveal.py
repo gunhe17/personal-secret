@@ -9,6 +9,9 @@ from pydantic import BaseModel
 from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.secret.secret_repository import SecretRepository
+from personal_secret.api.domain.secret.secret_event import SecretEvent
+
+from personal_secret.api.domain.event.event_repository import EventRepository
 
 from personal_secret.api.infrastructure.postgresql.client import db_client
 from personal_secret.api.infrastructure.postgresql.session import transactional_session
@@ -25,12 +28,30 @@ class Input(BaseModel):
 # usecase
 
 @typecheck
-async def reveal(*, session, input: Input, team_id: UUID) -> dict:
+async def reveal(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> dict:
     # find
-    secret = await SecretRepository.get_by_id(session=session, id=UUID(input.id), team_id=team_id)
+    event, secret = SecretEvent.read(
+        secret=(
+            await SecretRepository.get_by_id(
+                session=session,
+                id=UUID(input.id),
+                team_id=team_id,
+            )
+        )
+    )
 
-    # return (ciphertext 그대로 — 복호화는 클라가 team_key 로)
-    return {**secret.to_dict(), "value": secret.value.to_str()}
+    # emit
+    await EventRepository.emit(
+        session=session,
+        events=[event],
+        actor_id=actor_id,
+        actor_team_id=team_id,
+    )
+
+    # return
+    return {
+        "data": {**secret.to_dict(), "value": secret.value.to_str()},
+    }
 
 
 # #

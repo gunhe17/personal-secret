@@ -11,11 +11,15 @@ from personal_secret.api.core.validate import typecheck
 from personal_secret.api.domain.team.team import Team
 from personal_secret.api.domain.team.team_name import TeamName
 from personal_secret.api.domain.team.team_repository import TeamRepository
+from personal_secret.api.domain.team.team_event import TeamEvent
+
+from personal_secret.api.domain.event.event_repository import EventRepository
 
 from personal_secret.api.domain.account_team.account_team import AccountTeam
 from personal_secret.api.domain.account_team.role import Role
 from personal_secret.api.domain.account_team.team_locked_key import TeamLockedKey
 from personal_secret.api.domain.account_team.account_team_repository import AccountTeamRepository
+from personal_secret.api.domain.account_team.account_team_event import AccountTeamEvent
 
 from personal_secret.api.infrastructure.postgresql.client import db_client
 from personal_secret.api.infrastructure.postgresql.session import transactional_session
@@ -35,28 +39,44 @@ class Input(BaseModel):
 
 @typecheck
 async def create(*, session, input: Input, account_id: UUID) -> dict:
-    # create team (생성자 = 인증된 account)
-    team = await TeamRepository.add(
-        session=session,
-        entity=Team.new(
-            name=TeamName.from_str(input.name),
-            created_by=account_id,
+    # create team
+    team_event, team = TeamEvent.created(
+        team=await TeamRepository.add(
+            session=session,
+            entity=Team.new(
+                name=TeamName.from_str(input.name),
+                created_by=account_id,
+            ),
         ),
     )
 
     # owner membership
-    await AccountTeamRepository.add_unique_by_account_and_team(
-        session=session,
-        entity=AccountTeam.new(
-            account_id=account_id,
-            team_id=team.id,
-            role=Role.owner(),
-            team_locked_key=TeamLockedKey.from_str(input.team_locked_key),
+    member_event, _ = AccountTeamEvent.created(
+        membership=await AccountTeamRepository.add_unique_by_account_and_team(
+            session=session,
+            entity=AccountTeam.new(
+                account_id=account_id,
+                team_id=team.id,
+                role=Role.owner(),
+                team_locked_key=TeamLockedKey.from_str(input.team_locked_key),
+            ),
         ),
     )
 
     # return
-    return {"data": team.to_dict()}
+    return {
+        "data": team.to_dict(),
+        "event": [
+            event.to_dict()
+            for event in (
+                await EventRepository.emit(
+                    session=session,
+                    events=[team_event, member_event],
+                    actor_id=account_id,
+                )
+            )
+        ],
+    }
 
 
 # #

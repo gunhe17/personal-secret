@@ -28,13 +28,22 @@ class Input(BaseModel):
 # usecase
 
 @typecheck
-async def delete(*, session, input: Input, team_id: UUID) -> dict:
+async def delete(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> dict:
     # find
-    secret = await SecretRepository.get_by_id(session=session, id=UUID(input.id), team_id=team_id)
+    secret = await SecretRepository.get_by_id(
+        session=session,
+        id=UUID(input.id),
+        team_id=team_id,
+    )
 
     # delete
     event, removed = SecretEvent.deleted(
-        secret=await SecretRepository.remove_by_id(session=session, id=secret.id),
+        secret=(
+            await SecretRepository.remove_by_id(
+                session=session,
+                id=secret.id,
+            )
+        )
     )
 
     # return
@@ -42,8 +51,15 @@ async def delete(*, session, input: Input, team_id: UUID) -> dict:
         "data": removed.to_dict(),
         "event": [
             event.to_dict()
-            for event in (await EventRepository.emit(session=session, events=[event]))
-        ]
+            for event in (
+                await EventRepository.emit(
+                    session=session,
+                    events=[event],
+                    actor_id=actor_id,
+                    actor_team_id=team_id,
+                )
+            )
+        ],
     }
 
 

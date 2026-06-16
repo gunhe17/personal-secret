@@ -30,23 +30,40 @@ class Input(BaseModel):
 # usecase
 
 @typecheck
-async def update(*, session, input: Input, team_id: UUID) -> dict:
+async def update(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> dict:
     # find
-    found = await SecretRepository.get_by_id(session=session, id=UUID(input.id), team_id=team_id)
+    found = await SecretRepository.get_by_id(
+        session=session,
+        id=UUID(input.id),
+        team_id=team_id,
+    )
 
-    # update (value 는 클라가 team_key 로 암호화한 ciphertext — 서버는 교체만)
+    # update (value 는 클라가 team_key 로 암호화한 ciphertext)
     updated = found.with_value(Ciphertext.from_str(input.value))
 
     # persist
-    secret = await SecretRepository.update(session=session, entity=updated)
+    event, secret = SecretEvent.updated(
+        secret=(
+            await SecretRepository.update(
+                session=session,
+                entity=updated,
+            )
+        )
+    )
 
     # return
-    event = SecretEvent.updated(secret=secret)
     return {
         "data": secret.to_dict(),
         "event": [
             e.to_dict()
-            for e in (await EventRepository.emit(session=session, events=[event]))
+            for e in (
+                await EventRepository.emit(
+                    session=session,
+                    events=[event],
+                    actor_id=actor_id,
+                    actor_team_id=team_id,
+                )
+            )
         ],
     }
 

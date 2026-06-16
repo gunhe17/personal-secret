@@ -15,6 +15,9 @@ from personal_secret.api.domain.account.personal_unlock_salt import PersonalUnlo
 from personal_secret.api.domain.account.login_salt import LoginSalt
 from personal_secret.api.domain.account.login_verifier import LoginVerifier
 from personal_secret.api.domain.account.account_repository import AccountRepository
+from personal_secret.api.domain.account.account_event import AccountEvent
+
+from personal_secret.api.domain.event.event_repository import EventRepository
 
 from personal_secret.api.infrastructure.crypto.client import crypto
 from personal_secret.api.infrastructure.postgresql.client import db_client
@@ -25,7 +28,6 @@ from personal_secret.api.infrastructure.postgresql.session import transactional_
 # input
 
 class Input(BaseModel):
-    # 전부 클라가 만든 자료 — 서버는 보관·검증값 생성만 (키 평문은 안 받음)
     email: str
     personal_lock: str
     personal_locked_key: str
@@ -40,22 +42,35 @@ class Input(BaseModel):
 @typecheck
 async def register(*, session, input: Input) -> dict:
     # persist
-    account = await AccountRepository.add_unique_by_email(
-        session=session,
-        entity=Account.new(
-            email=Email.from_str(input.email),
-            personal_lock=PersonalLock.from_str(input.personal_lock),
-            personal_locked_key=PersonalLockedKey.from_str(input.personal_locked_key),
-            personal_unlock_salt=PersonalUnlockSalt.from_str(input.personal_unlock_salt),
-            login_salt=LoginSalt.from_str(input.login_salt),
-            login_verifier=LoginVerifier.from_str(
-                crypto.hash_password(password=input.login_proof),
+    event, account = AccountEvent.created(
+        account=await AccountRepository.add_unique_by_email(
+            session=session,
+            entity=Account.new(
+                email=Email.from_str(input.email),
+                personal_lock=PersonalLock.from_str(input.personal_lock),
+                personal_locked_key=PersonalLockedKey.from_str(input.personal_locked_key),
+                personal_unlock_salt=PersonalUnlockSalt.from_str(input.personal_unlock_salt),
+                login_salt=LoginSalt.from_str(input.login_salt),
+                login_verifier=LoginVerifier.from_str(
+                    crypto.hash_password(password=input.login_proof),
+                ),
             ),
         ),
     )
 
     # return
-    return {"data": account.to_dict()}
+    return {
+        "data": account.to_dict(),
+        "event": [
+            event.to_dict()
+            for event in (
+                await EventRepository.emit(
+                    session=session,
+                    events=[event],
+                )
+            )
+        ],
+    }
 
 
 # #
