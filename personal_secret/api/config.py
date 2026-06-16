@@ -162,42 +162,6 @@ def get_test_postgres_config() -> PostgresConfig:
 
 
 # #
-# outbox
-
-class OutboxConfig(ABC):
-    @property
-    @abstractmethod
-    def OUTBOX_POLL_INTERVAL_SEC(self) -> float: ...
-
-    @property
-    @abstractmethod
-    def OUTBOX_BATCH_SIZE(self) -> int: ...
-
-    @property
-    @abstractmethod
-    def AUDIT_LOG_PATH(self) -> str: ...
-
-
-class DefaultOutboxConfig(OutboxConfig):
-    @property
-    def OUTBOX_POLL_INTERVAL_SEC(self) -> float:
-        return float(os.environ.get("OUTBOX_POLL_INTERVAL_SEC", "1.0"))
-
-    @property
-    def OUTBOX_BATCH_SIZE(self) -> int:
-        return int(os.environ.get("OUTBOX_BATCH_SIZE", "100"))
-
-    @property
-    def AUDIT_LOG_PATH(self) -> str:
-        return os.environ.get("OUTBOX_AUDIT_LOG_PATH", "audit.log.jsonl")
-
-
-def get_outbox_config() -> OutboxConfig:
-    config = DefaultOutboxConfig()
-    return config
-
-
-# #
 # auth
 
 class AuthConfig(ABC):

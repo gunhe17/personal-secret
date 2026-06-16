@@ -27,19 +27,15 @@ server.middleware(middleware.proxy_headers())
 
 # system
 server.router(
-    Router(path="/health", methods=["GET"], endpoint=system.health)
+    Router(path="/system/health", methods=["GET"], endpoint=system.health)
 )
 server.router(
-    Router(path="/", methods=["GET"], endpoint=system.index)
+    Router(path="/system/schema", methods=["GET"], endpoint=system.schema)
 )
+
+# view
 server.router(
-    Router(path="/styles.css", methods=["GET"], endpoint=system.styles)
-)
-server.router(
-    Router(path="/styleguide", methods=["GET"], endpoint=system.styleguide)
-)
-server.router(
-    Router(path="/commands", methods=["GET"], endpoint=command.list_commands)
+    Router(path="/schema", methods=["GET"], endpoint=system.page_schema)
 )
 
 # auth
