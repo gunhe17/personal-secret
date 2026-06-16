@@ -50,7 +50,7 @@ class PostgresRepository(Repository, Generic[E, M]):
         return await cls._find(session=session, where=[cls.model.id == id])  # type: ignore[attr-defined]
 
     @classmethod
-    async def get_by_ids(cls, *, session: AsyncSession, ids: list[UUID]) -> list[E]:
+    async def find_by_ids(cls, *, session: AsyncSession, ids: list[UUID]) -> list[E]:
         if not ids:
             return []
         return await cls._filter(session=session, where=[cls.model.id.in_(ids)])  # type: ignore[attr-defined]
@@ -223,13 +223,14 @@ class PostgresRepository(Repository, Generic[E, M]):
         *,
         session: AsyncSession,
         entity: E,
-        unique: list[str],
+        unique: list[str | tuple[str, ...]],
         exclude_id: UUID | None = None,
     ) -> None:
         payload = entity.to_model()  # type: ignore[attr-defined]
-        for column in unique:
-            where = [getattr(cls.model, column) == payload[column]]
+        for constraint in unique:
+            columns = (constraint,) if isinstance(constraint, str) else tuple(constraint)
+            where = [getattr(cls.model, c) == payload[c] for c in columns]
             if exclude_id is not None:
                 where.append(cls.model.id != exclude_id)  # type: ignore[attr-defined]
             if await cls._count(session=session, where=where) > 0:
-                raise UniqueViolationError(unique_key=column)
+                raise UniqueViolationError(unique_key="+".join(columns))
