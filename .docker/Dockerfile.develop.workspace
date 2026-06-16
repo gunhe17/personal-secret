@@ -11,6 +11,6 @@ RUN \
 
 COPY pyproject.toml ./
 
-RUN uv pip compile pyproject.toml --extra app --extra dev -o /tmp/reqs.txt && \
+RUN uv pip compile pyproject.toml --extra app --extra dev --extra mcp -o /tmp/reqs.txt && \
     uv pip install --system -r /tmp/reqs.txt && \
     rm /tmp/reqs.txt

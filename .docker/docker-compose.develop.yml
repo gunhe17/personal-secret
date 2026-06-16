@@ -36,6 +36,18 @@ services:
     env_file:
       - ../.env/.env.develop
 
+  mcp:
+    container_name: personal-secret-develop-mcp
+    build:
+      context: ..
+      dockerfile: .docker/Dockerfile.develop.mcp
+    volumes:
+      - ..:/app:ro
+    ports:
+      - "127.0.0.1:${DEVELOP_MCP_PORT}:${DEVELOP_MCP_CONTAINER_PORT}"
+    env_file:
+      - ../.env/.env.develop
+
   database:
     container_name: personal-secret-develop-database
     image: postgres:16-alpine
