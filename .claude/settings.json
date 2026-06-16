@@ -1,8 +1,5 @@
 {
   "permissions": {
-    "allow": [
-      "Read(.claude/docs/**)"
-    ],
     "deny": [
       "Read(**/.env)",
       "Read(**/.env.*)",
@@ -18,5 +15,29 @@
       "Bash(less *.env*)",
       "Bash(more *.env*)"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/check_dependencies.py\""
+          }
+        ]
+      }
+    ]
+  },
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "pyright-lsp@claude-plugins-official": true
   }
 }

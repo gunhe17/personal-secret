@@ -1,8 +1,14 @@
+---
+paths:
+  - "personal_secret/api/domain/**/*.py"
+  - "personal_secret/api/core/value_object.py"
+---
+
 # ValueObject 패턴
 
 도메인 값을 감싸는 frozen dataclass + 검증 팩토리. `domain/{aggregate}/{value}.py`에 산다.
 
-루트: [api.md](../api.md) · 공통 스타일: [conventions.md](../conventions.md) · 베이스: [repository.md](repository.md)는 별개
+루트: [api/CLAUDE.md](../../../personal_secret/api/CLAUDE.md) · 공통 스타일: [conventions.md](../shared/conventions.md) · 베이스: [repository.md](repository.md)는 별개
 
 ---
 
@@ -30,9 +36,9 @@ class ValueObject:                       # core/value_object.py
             raise  # DevelopError (core 가드는 새 예외 없이 직접 raise)
 ```
 
-**팩토리**: `from_str`(단순) / `from_dict`(복합) / `from_datetime`(시간) / `from_bool`(플래그) / `from_int`(수량·금액) / `from_bytes`(blob). 전부 `@classmethod`, **단일 `value` positional 인자**(VO는 인자 하나라 positional — `Name.from_str(x)`), 반환 타입 = forward reference 문자열.
-**변환**: `to_str` / `to_dict` / `to_bool` / `to_int` (+ 시간 VO는 DB용 native `to_datetime`, blob VO는 `to_bytes`).
-**검증 순서**: type (`InvalidError`) → format (`InvalidFormatError`) → range/규칙. (예외 → [exception.md](exception.md))
+팩토리: `from_str`(단순) / `from_dict`(복합) / `from_datetime`(시간) / `from_bool`(플래그) / `from_int`(수량·금액) / `from_bytes`(blob) / `from_json`(polymorphic JSON scalar|list). 전부 `@classmethod`, 단일 `value` positional 인자(VO는 인자 하나라 positional — `Name.from_str(x)`), 반환 타입 = forward reference 문자열.
+변환: `to_str` / `to_dict` / `to_bool` / `to_int` (+ 시간 VO는 DB용 native `to_datetime`, blob VO는 `to_bytes`).
+검증 순서: type (`InvalidError`) → format (`InvalidFormatError`) → range/규칙. (예외 → [exception.md](exception.md))
 
 ```python
 # 단순 값 — from_str / to_str
@@ -119,21 +125,22 @@ class Address(ValueObject):
 
 도메인 값(`str`/`int`/`bool`/`datetime`/`dict`)은 전부 VO로 승격. Entity 필드도 마찬가지([entity.md](entity.md)). 예외는 둘뿐:
 
-- **`UUID`** (id / FK / `request_id` / `idempotency_key`) — 생성자가 형식을 보장하는 이미 검증된 강타입이라 raw 유지. `isinstance(x, UUID)` 가드는 동어반복. FK별 별도 타입(`SecretId`/`VaultId`)·단일 공용 `Id` VO는 복잡도 대비 이득 없어 보류 — id 혼동은 리뷰/테스트로 커버
-- **`created_at`/`updated_at`/`deleted_at`** — read-only audit 필드, DB 소유([entity.md](entity.md) "id/audit")
+- `UUID` (id / FK / `request_id` / `idempotency_key`) — 생성자가 형식을 보장하는 이미 검증된 강타입이라 raw 유지. `isinstance(x, UUID)` 가드는 동어반복. FK별 별도 타입(`SecretId`/`VaultId`)·단일 공용 `Id` VO는 복잡도 대비 이득 없어 보류 — id 혼동은 리뷰/테스트로 커버
+- `created_at`/`updated_at`/`deleted_at` — read-only audit 필드, DB 소유([entity.md](entity.md) "id/audit")
 
 세부 규칙:
-- **datetime은 raw stdlib로 두지 않는다** — aggregate별 VO(`occurred_at.py` → `OccurredAt`). 시간 VO만 `to_datetime`(DateTime 컬럼)으로 갈림, 단순/복합 VO는 String/JSONB라 `to_model`도 `to_str()`/`to_dict()` 그대로
-- **enum 성격 VO는 `_allowed_list` hint(`tuple[str, ...]`)로 분리** — frozen dataclass는 mutable default 불가라 튜플. `Role._allowed_list`로 테스트·API enum 재사용
-- **bool도 VO로** — `from_bool`/`to_bool`. 단 repo finder가 DB 컬럼 직접 조회 시(`_filter_by(column="is_checked", value=False)`)는 원시 bool(VO는 도메인 경계용, 쿼리 파라미터는 컬럼 타입)
-- **freeform `dict`도 복합 VO로** — `dict(value)`로 방어적 복사(raw dict는 unhashable → frozen 불변성 깨짐)
+- datetime은 raw stdlib로 두지 않는다 — aggregate별 VO(`occurred_at.py` → `OccurredAt`). 시간 VO만 `to_datetime`(DateTime 컬럼)으로 갈림, 단순/복합 VO는 String/JSONB라 `to_model`도 `to_str()`/`to_dict()` 그대로
+- enum 성격 VO는 `_allowed_list` hint(`tuple[str, ...]`)로 분리 — frozen dataclass는 mutable default 불가라 튜플. `Role._allowed_list`로 테스트·API enum 재사용
+- bool도 VO로 — `from_bool`/`to_bool`. 단 repo finder가 DB 컬럼 직접 조회 시(`_filter_by(column="is_checked", value=False)`)는 원시 bool(VO는 도메인 경계용, 쿼리 파라미터는 컬럼 타입)
+- freeform `dict`도 복합 VO로 — `dict(value)`로 방어적 복사(raw dict는 unhashable → frozen 불변성 깨짐)
+- polymorphic JSON 값(scalar 또는 list)은 `from_json`/`to_json` — `Setting.Value`처럼 `str`/`dict` 어느 표준 변환자에도 안 맞는 union을 JSONB에 저장할 때 쓰는 전용 변환자. list는 불변성 위해 `tuple`로 보관, `to_json`에서 `list`로 복원. dict/None 등 중첩은 거부
 - 식별 키성 str(`idempotency_key`)은 non-empty VO + 모델은 `nullable=True` + partial unique index(`WHERE col IS NOT NULL`)
 
 ---
 
 ## 안티패턴
 
-- ❌ `Name(_value="x")` 직접 생성 → `Name.from_str("x")` 팩토리 (**[INV-2]**)
-- ❌ 도메인 값을 raw `str`/`datetime`/`dict`로 Entity 필드에 → VO로 승격 (**[INV-10]**, UUID·audit만 예외)
-- ❌ enum 허용값을 inline 튜플/로컬 변수로 → `_allowed_list` hint
-- ❌ 다인자 VO 팩토리(`from_x(a, b)`) → 단일 `value` 인자(복합값은 `from_dict`)
+- `Name(_value="x")` 직접 생성 → `Name.from_str("x")` 팩토리 (**[INV-2]**)
+- 도메인 값을 raw `str`/`datetime`/`dict`로 Entity 필드에 → VO로 승격 ([INV-10], UUID·audit만 예외)
+- enum 허용값을 inline 튜플/로컬 변수로 → `_allowed_list` hint
+- 다인자 VO 팩토리(`from_x(a, b)`) → 단일 `value` 인자(복합값은 `from_dict`)

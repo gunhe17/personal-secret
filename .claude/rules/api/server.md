@@ -1,8 +1,14 @@
+---
+paths:
+  - "personal_secret/api/bin/server.py"
+  - "personal_secret/api/server/**"
+---
+
 # server + bin 패턴 (합성 루트)
 
-프레임워크 프리미티브(`server/`) + 합성 루트(`bin/server.py`). FastAPI 앱을 **조립**한다 — 미들웨어·라우터·예외 핸들러 등록 + `app` 빌드. **비즈니스 로직 0, 도메인 의존 0.**
+프레임워크 프리미티브(`server/`) + 합성 루트(`bin/server.py`). FastAPI 앱을 조립한다 — 미들웨어·라우터·예외 핸들러 등록 + `app` 빌드. 비즈니스 로직 0, 도메인 의존 0.
 
-루트: [api.md](../api.md) · endpoint: [endpoint.md](endpoint.md) · 예외: [exception.md](exception.md)
+루트: [api/CLAUDE.md](../../../personal_secret/api/CLAUDE.md) · endpoint: [endpoint.md](endpoint.md) · 예외: [exception.md](exception.md)
 
 ---
 
@@ -64,22 +70,22 @@ server.exception_handler(exception.internal())
 app = server.app()
 ```
 
-- **endpoint는 모듈 namespace로 import** (`from ...endpoint import secret` → `secret.post_create`). 한 모듈 2개+ 핸들러 등록 규칙 — [conventions.md](../conventions.md) "라우터/registry"
-- 핸들러 이름은 **HTTP 메서드 접두**([endpoint.md](endpoint.md))
+- endpoint는 모듈 namespace로 import (`from ...endpoint import secret` → `secret.post_create`). 한 모듈 2개+ 핸들러 등록 규칙 — [conventions.md](../shared/conventions.md) "라우터/registry"
+- 핸들러 이름은 HTTP 메서드 접두([endpoint.md](endpoint.md))
 - `# server` / `# router` / `# run` 섹션 마커로 구획, `app`은 모듈 끝에서 빌드
-- **조립은 전부 `bin/server.py`에** — endpoint/usecase는 자기를 등록하지 않는다(등록의 단일 출처)
+- 조립은 전부 `bin/server.py`에 — endpoint/usecase는 자기를 등록하지 않는다(등록의 단일 출처)
 
 ---
 
 ## 예외 핸들러 등록 — 2개로 완결
 
-`exception.client()` + `exception.internal()` 둘만 등록하면 Starlette가 `type(exc).__mro__`로 자동 분기. 핸들러 본문·예외 트리·메시지 규약의 단일 권위는 [exception.md](exception.md)(**[INV-4]**) — 여기선 *등록*만.
+`exception.client()` + `exception.internal()` 둘만 등록하면 Starlette가 `type(exc).__mro__`로 자동 분기. 핸들러 본문·예외 트리·메시지 규약의 단일 권위는 [exception.md](exception.md)([INV-4]) — 여기선 *등록*만.
 
 ---
 
 ## 안티패턴
 
-- ❌ endpoint/usecase가 자기를 라우터에 등록 → `bin/server.py` 단일 출처
-- ❌ `bin/server.py`에 라우팅/검증/예외 본문 인라인 → 본문은 `server/` 래퍼·핸들러 팩토리에, bin은 등록 호출만
-- ❌ `server/`가 도메인/usecase를 import → 프레임워크 어댑터는 도메인 무지(`Callable`만) — **[INV-1]**
-- ❌ 예외 핸들러를 카테고리별 N개 등록 → `client()`/`internal()` 2개(MRO 분기)
+- endpoint/usecase가 자기를 라우터에 등록 → `bin/server.py` 단일 출처
+- `bin/server.py`에 라우팅/검증/예외 본문 인라인 → 본문은 `server/` 래퍼·핸들러 팩토리에, bin은 등록 호출만
+- `server/`가 도메인/usecase를 import → 프레임워크 어댑터는 도메인 무지(`Callable`만) — **[INV-1]**
+- 예외 핸들러를 카테고리별 N개 등록 → `client()`/`internal()` 2개(MRO 분기)
