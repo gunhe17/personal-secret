@@ -31,7 +31,7 @@ class Repository(ABC):
 
     @classmethod
     @abstractmethod
-    async def get_by_ids(cls, *, session: AsyncSession, ids: list[UUID]) -> list[Any]:
+    async def find_by_ids(cls, *, session: AsyncSession, ids: list[UUID]) -> list[Any]:
         ...
 
     @classmethod
