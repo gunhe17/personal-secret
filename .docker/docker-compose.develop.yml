@@ -22,9 +22,8 @@ services:
     build:
       context: ..
       dockerfile: .docker/Dockerfile.develop.api
-    # idle — develop runs the server by hand (`docker exec`) for full env control.
-    # overrides the image CMD; the server is started manually inside the container.
-    command: sleep infinity
+    # run the server on `up` — reload is on in develop (is_develop), code is bind-mounted
+    command: python -m personal_secret.api.bin.server
     volumes:
       - ..:/app:ro
     ports:

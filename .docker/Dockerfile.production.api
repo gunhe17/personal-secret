@@ -15,7 +15,6 @@ RUN uv pip compile pyproject.toml --extra app -o /tmp/reqs.txt && \
     uv pip install --system -r /tmp/reqs.txt && \
     rm /tmp/reqs.txt
 
-# bake the code into the image — production is immutable, no bind mount / reload
 COPY personal_secret ./personal_secret
 
 CMD ["python", "-m", "personal_secret.api.bin.server"]
