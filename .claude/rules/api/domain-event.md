@@ -21,7 +21,7 @@ paths:
 |------|----------|
 | 마커 (domain) | `Event` 상속 순수 마커, IO/async·타 aggregate 의존 0 — [INV-7]. "무엇에 무슨 행위"(목적어+동사)만 안다 |
 | 저장 (event aggregate) | `EventRepository.emit`이 마커 → `Event` entity 변환 + actor 스탬프 후 일괄 add |
-| 조정 (usecase) | 도메인 변경 + 마커 + `emit`(같은 session, actor 전달) + 인라인 dict 응답 — [INV-8] |
+| 조정 (usecase) | 도메인 변경 + 마커 + `emit`(같은 session, actor 전달) + `Output.new(data, event)` 응답 — [INV-8] |
 | vocabulary | `{Aggregate}EventKind` 값 = `act` 표기(`"created"`/`"read"`), `Act._allowed_list` 미러링. 대상은 `act_entity_name`(`"secret"`)으로 분리 |
 
 ---
@@ -96,7 +96,7 @@ class EventRepository(PostgresRepository[Event, EventModel]):
 
 ---
 
-## 조정 — usecase + 인라인 응답 — [INV-8]
+## 조정 — usecase + Output 응답 — [INV-8]
 
 도메인 변경 + 이벤트 저장의 조정은 usecase 책임. 마커 + `emit`을 같은 session으로 = atomic. actor는 endpoint(`require_member`/`require_owner`의 membership)에서 usecase로 흘려 emit에 전달:
 
@@ -105,18 +105,21 @@ class EventRepository(PostgresRepository[Event, EventModel]):
 event, entity = SecretEvent.created(
     secret=await SecretRepository.add(session=session, entity=Secret.new(...)),
 )
-return {
-    "data": entity.to_dict(),
-    "event": [e.to_dict() for e in (await EventRepository.emit(
+return Output.new(
+    data=entity.to_dict(),
+    event=[e.to_dict() for e in (await EventRepository.emit(
         session=session, events=[event], actor_id=actor_id, actor_team_id=team_id))],
-}
+)
 
 # read(조회) — 성공 접근 기록, 응답엔 echo 안 함. 마커가 fetch 를 감싼다(write 의 created 와 동형)
 event, secret = SecretEvent.read(
     secret=await SecretRepository.get_by_id(session=session, id=..., team_id=team_id))
 await EventRepository.emit(
     session=session, events=[event], actor_id=actor_id, actor_team_id=team_id)
-return {**secret.to_dict(), "value": secret.value.to_str()}
+return Output.new(
+    data={**secret.to_dict(), "value": secret.value.to_str()},
+    event=None,
+)
 ```
 
 - actor_id: 인증된 account(`membership.account_id`/`account.id`). usecase는 `actor_id: UUID | None = None` 파라미터로 받고 emit에 전달(CLI는 미전달 → None). register는 미인증 → None
@@ -135,4 +138,4 @@ return {**secret.to_dict(), "value": secret.value.to_str()}
 - 이벤트 저장을 각 aggregate repo에 흩뿌리기 → 단일 `domain/event` aggregate(`emit`)로 집약
 - global(RLS 밖) 동작의 이벤트에 actor_team_id 채우기 → `None`(usecase가 전달 안 함)
 - read 이벤트를 응답에 echo → 감사는 side-record, 응답은 조회 데이터만
-- 응답을 `Output` 래퍼로 → 인라인 dict ([INV-8])
+- 응답을 맨몸 dict로 → `Output.new(data, event)` ([INV-8])

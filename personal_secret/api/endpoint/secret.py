@@ -35,7 +35,7 @@ async def post_create(
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
     created = await secret_create.create(session=session, input=body, team_id=team_id, actor_id=membership.account_id)
-    return JSONResponse(status_code=200, content=created)
+    return JSONResponse(status_code=200, content=created.to_dict())
 
 
 async def get_list(
@@ -52,7 +52,7 @@ async def get_list(
         team_id=team_id,
         actor_id=membership.account_id,
     )
-    return JSONResponse(status_code=200, content=listed)
+    return JSONResponse(status_code=200, content=listed.to_dict())
 
 
 async def get_reveal(
@@ -62,7 +62,7 @@ async def get_reveal(
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
     revealed = await secret_reveal.reveal(session=session, input=secret_reveal.Input(id=str(secret_id)), team_id=team_id, actor_id=membership.account_id)
-    return JSONResponse(status_code=200, content=revealed)
+    return JSONResponse(status_code=200, content=revealed.to_dict())
 
 
 async def put_update(
@@ -78,7 +78,7 @@ async def put_update(
         team_id=team_id,
         actor_id=membership.account_id,
     )
-    return JSONResponse(status_code=200, content=updated)
+    return JSONResponse(status_code=200, content=updated.to_dict())
 
 
 async def delete_secret(
@@ -88,4 +88,4 @@ async def delete_secret(
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
     removed = await secret_delete.delete(session=session, input=secret_delete.Input(id=str(secret_id)), team_id=team_id, actor_id=membership.account_id)
-    return JSONResponse(status_code=200, content=removed)
+    return JSONResponse(status_code=200, content=removed.to_dict())

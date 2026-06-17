@@ -417,7 +417,7 @@ async def secret_list_emits_read_per_result_sharing_act_group(session):
         team_id=team,
         actor_id=actor,
     )
-    assert len(listed["data"]) == 3
+    assert len(listed.data) == 3
     reads = [e for e in await EventRepository.list_all(session=session) if e.act.to_str() == "read"]
     assert len(reads) == 3                              # 결과당 1건
     assert len({e.act_group_id for e in reads}) == 1   # 같은 act_group 으로 묶임
@@ -437,6 +437,7 @@ def _register_input(*, email="me@example.com", login_proof="proof-xyz"):
         personal_unlock_salt=b64(b"unlock-salt"),
         login_salt=b64(b"login-salt"),
         login_proof=login_proof,
+        team_locked_key=b64(b"personal-team-locked-key"),
     )
 
 
@@ -448,9 +449,19 @@ async def account_find_by_email(session):
 
 async def auth_register_creates_account(session):
     result = await auth_register.register(session=session, input=_register_input())
-    assert result["data"]["email"] == "me@example.com"
+    assert result.data["email"] == "me@example.com"
     # 검증값·키 평문은 응답에 없음
-    assert "login_verifier" not in result["data"] and "login_proof" not in result["data"]
+    assert "login_verifier" not in result.data and "login_proof" not in result.data
+
+
+async def auth_register_creates_personal_team(session):
+    result = await auth_register.register(session=session, input=_register_input())
+    team_id = uuid.UUID(result.data["personal_team_id"])
+    account = await AccountRepository.find_by_email(session=session, email=make_account().email)
+    membership = await AccountTeamRepository.find_by_account_and_team(
+        session=session, account_id=account.id, team_id=team_id,
+    )
+    assert membership is not None and membership.role.to_str() == "owner"
 
 
 async def auth_register_duplicate_email_raises(session):
@@ -468,10 +479,10 @@ async def auth_login_issues_token_bound_to_account(session):
         session=session,
         input=auth_login.Input(email="me@example.com", login_proof="proof-xyz"),
     )
-    raw = result["data"]["token"]
-    assert raw and result["data"]["expires_at"]
+    raw = result.data["token"]
+    assert raw and result.data["expires_at"]
     # 키 자료 동봉 (클라가 personal_key 복원용)
-    assert result["data"]["personal_locked_key"] and result["data"]["personal_unlock_salt"]
+    assert result.data["personal_locked_key"] and result.data["personal_unlock_salt"]
     # 저장은 fingerprint, 토큰은 account 에 묶임
     stored = await TokenRepository.find_by_fingerprint(session=session, fingerprint=Fingerprint.from_str(sha256.hash(value=raw)))
     assert stored is not None and stored.account_id == account.id
@@ -488,7 +499,7 @@ async def auth_login_wrong_proof_raises(session):
 async def auth_salts_returns_login_and_unlock_salt(session):
     await auth_register.register(session=session, input=_register_input())
     result = await auth_get_only_salts.get_only_salts(session=session, input=auth_get_only_salts.Input(email="me@example.com"))
-    assert result["data"]["personal_unlock_salt"] and result["data"]["login_salt"]
+    assert result.data["personal_unlock_salt"] and result.data["login_salt"]
 
 
 async def token_find_by_fingerprint_and_expiry(session):
@@ -515,7 +526,7 @@ async def team_create_makes_team_and_owner_membership(session):
         input=team_create.Input(name="acme", team_locked_key=b64),
         account_id=account.id,
     )
-    team_id = uuid.UUID(result["data"]["id"])
+    team_id = uuid.UUID(result.data["id"])
     membership = await AccountTeamRepository.find_by_account_and_team(
         session=session, account_id=account.id, team_id=team_id,
     )
@@ -552,7 +563,7 @@ async def account_team_filter_by_team(session):
 async def account_public_key_lookup(session):
     a = await AccountRepository.add(session=session, entity=make_account(email="me@example.com"))
     result = await account_get_only_public_key.get_only_public_key(session=session, input=account_get_only_public_key.Input(email="me@example.com"))
-    assert result["data"]["account_id"] == str(a.id) and result["data"]["personal_lock"]
+    assert result.data["account_id"] == str(a.id) and result.data["personal_lock"]
 
 
 async def team_invite_adds_membership(session):
@@ -595,12 +606,12 @@ async def team_rotate_reencrypts_and_rekeys(session):
     result = await team_rotate.rotate(
         session=session,
         input=team_rotate.Input(
-            secrets=[team_rotate.SecretEntry(id=str(secret.id), value=new_value)],
-            members=[team_rotate.MemberEntry(account_id=str(account.id), team_locked_key=new_key)],
+            secrets={str(secret.id): new_value},
+            members={str(account.id): new_key},
         ),
         team_id=team.id,
     )
-    assert result["data"]["secrets_reencrypted"] == 1 and result["data"]["members_rekeyed"] == 1
+    assert result.data["secrets_reencrypted"] == 1 and result.data["members_rekeyed"] == 1
     # 시크릿 value 와 멤버 team_locked_key 가 새 값으로 교체됨
     reloaded = await SecretRepository.get_by_id(session=session, id=secret.id, team_id=team.id)
     assert reloaded.value.to_str() == new_value
@@ -642,6 +653,7 @@ TESTS = [
     secret_list_emits_read_per_result_sharing_act_group,
     account_find_by_email,
     auth_register_creates_account,
+    auth_register_creates_personal_team,
     auth_register_duplicate_email_raises,
     auth_login_issues_token_bound_to_account,
     auth_login_wrong_proof_raises,

@@ -5,8 +5,8 @@ import asyncio
 import json
 from uuid import UUID
 
-from pydantic import BaseModel
-
+from personal_secret.api.core.usecase import In
+from personal_secret.api.core.usecase import Out
 from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.secret.ciphertext import Ciphertext
@@ -27,58 +27,55 @@ from personal_secret.api.infrastructure.database.common.session import transacti
 # input
 # (클라가 새 team_key 생성 → 전 시크릿 재암호화 + 잔류 멤버 재봉인 후 한 번에 제출)
 
-class SecretEntry(BaseModel):
-    id: str
-    value: str
+class Input(In):
+    secrets: dict[str, str] = {}   # secret_id -> ciphertext
+    members: dict[str, str]        # account_id -> team_locked_key
 
 
-class MemberEntry(BaseModel):
-    account_id: str
-    team_locked_key: str
+# #
+# output
 
-
-class Input(BaseModel):
-    secrets: list[SecretEntry] = []
-    members: list[MemberEntry]
+class Output(Out):
+    pass
 
 
 # #
 # usecase
 
 @typecheck
-async def rotate(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> dict:
+async def rotate(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> Output:
     # reencrypt
-    for entry in input.secrets:
+    for id, value in input.secrets.items():
         secret = await SecretRepository.get_by_id(
             session=session,
-            id=UUID(entry.id),
+            id=UUID(id),
             team_id=team_id,
         )
         await SecretRepository.update(
             session=session,
-            entity=secret.with_value(Ciphertext.from_str(entry.value)),
+            entity=secret.with_value(Ciphertext.from_str(value)),
         )
 
     # rekey
-    for member in input.members:
+    for account_id, team_locked_key in input.members.items():
         membership = await AccountTeamRepository.get_by_account_and_team(
             session=session,
-            account_id=UUID(member.account_id),
+            account_id=UUID(account_id),
             team_id=team_id,
         )
         await AccountTeamRepository.update(
             session=session,
-            entity=membership.with_team_locked_key(TeamLockedKey.from_str(member.team_locked_key)),
+            entity=membership.with_team_locked_key(TeamLockedKey.from_str(team_locked_key)),
         )
 
     # return
     event, _ = TeamEvent.rotated(team_id=team_id)
-    return {
-        "data": {
+    return Output.new(
+        data={
             "secrets_reencrypted": len(input.secrets),
             "members_rekeyed": len(input.members),
         },
-        "event": [
+        event=[
             e.to_dict()
             for e in (
                 await EventRepository.emit(
@@ -89,7 +86,7 @@ async def rotate(*, session, input: Input, team_id: UUID, actor_id: UUID | None 
                 )
             )
         ],
-    }
+    )
 
 
 # #
@@ -98,7 +95,7 @@ async def rotate(*, session, input: Input, team_id: UUID, actor_id: UUID | None 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--team-id", required=True)
-    parser.add_argument("--payload", required=True, help='JSON {"secrets":[...],"members":[...]}')
+    parser.add_argument("--payload", required=True, help='JSON {"secrets":{id:ct},"members":{account_id:key}}')
     return parser.parse_args()
 
 async def _main():

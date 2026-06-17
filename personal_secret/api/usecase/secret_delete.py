@@ -4,8 +4,8 @@ import argparse
 import asyncio
 from uuid import UUID
 
-from pydantic import BaseModel
-
+from personal_secret.api.core.usecase import In
+from personal_secret.api.core.usecase import Out
 from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.secret.secret_repository import SecretRepository
@@ -20,15 +20,22 @@ from personal_secret.api.infrastructure.database.common.session import transacti
 # #
 # input
 
-class Input(BaseModel):
+class Input(In):
     id: str
+
+
+# #
+# output
+
+class Output(Out):
+    pass
 
 
 # #
 # usecase
 
 @typecheck
-async def delete(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> dict:
+async def delete(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> Output:
     # find
     secret = await SecretRepository.get_by_id(
         session=session,
@@ -47,9 +54,9 @@ async def delete(*, session, input: Input, team_id: UUID, actor_id: UUID | None 
     )
 
     # return
-    return {
-        "data": removed.to_dict(),
-        "event": [
+    return Output.new(
+        data=removed.to_dict(),
+        event=[
             event.to_dict()
             for event in (
                 await EventRepository.emit(
@@ -60,7 +67,7 @@ async def delete(*, session, input: Input, team_id: UUID, actor_id: UUID | None 
                 )
             )
         ],
-    }
+    )
 
 
 # #
