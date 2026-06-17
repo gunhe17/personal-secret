@@ -31,8 +31,8 @@ from __future__ import annotations
 import argparse, asyncio
 from pydantic import BaseModel
 from personal_secret.api.core.validate import typecheck
-from personal_secret.api.infrastructure.postgresql.client import db_client
-from personal_secret.api.infrastructure.postgresql.session import transactional_session
+from personal_secret.api.infrastructure.database.postgresql.client import db_client
+from personal_secret.api.infrastructure.database.common.session import transactional_session
 
 # #
 # input
@@ -76,7 +76,7 @@ async def {action}(*, session, input: Input) -> Result:
 ```
 
 - `@typecheck` 필수, kwarg-only(`*`)
-- `session = AsyncSession`(트랜잭션 경계), `input = Input`만 받음 — repo는 클래스로([repository.md](repository.md), [INV-6]), 인프라 싱글톤(`crypto`)은 모듈 import로 직접
+- `session = AsyncSession`(트랜잭션 경계), `input = Input`만 받음 — repo는 클래스로([repository.md](repository.md), [INV-6]), 인프라 싱글톤(`argon2`/`token` 등)은 모듈 import로 직접
 - sync/async는 IO 유무 — 순수 in-memory면 sync 가능(DB 조회·저장 있으면 async)
 
 ### action 네이밍 — 동사

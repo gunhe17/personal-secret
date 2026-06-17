@@ -23,6 +23,6 @@ description: 새 aggregate를 도메인(VO·Entity·Repository·Event)부터 use
 ## 체크
 
 - [ ] import 방향 위→아래만 (**[INV-1]**) — domain repo가 `PostgresRepository` 상속하는 완화는 OK
-- [ ] 중간 파일(`infrastructure/postgresql/{agg}_repository.py`) 안 만들었나 → domain repo 직접 상속
+- [ ] 중간 파일(`infrastructure/database/postgresql/{agg}_repository.py`) 안 만들었나 → domain repo 직접 상속
 - [ ] 등록을 endpoint 아닌 `bin/server.py`에 했나
 - [ ] Event act/name을 마커 enum + `Act._allowed_list`·`EntityName._allowed_list` 갱신했나

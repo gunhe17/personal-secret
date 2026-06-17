@@ -40,19 +40,23 @@ domain/common/exception.py
 
 infrastructure/common/exception.py
   InfrastructureDevelopError(DevelopError) 레이어 베이스 (5xx)
-  └─ DatabaseError / CryptoError         500
-  InfrastructureClientError(ClientError)   레이어 베이스 (4xx) — 구체 예외는 dialect(아래)
+  InfrastructureClientError(ClientError)   레이어 베이스 (4xx) — 구체 예외는 어댑터 옆(아래)
 
-infrastructure/postgresql/exception.py   (dialect 고유 typed 예외)
+infrastructure/database/common/exception.py     (어댑터-일반 typed 예외)
+  DatabaseError(InfrastructureDevelopError)        500 · transactional_session 경계
   UniqueViolationError(InfrastructureClientError)  409 · _ensure_unique 사전검사
+infrastructure/hash/common/exception.py  (어댑터 고유 typed 예외)
+  HashError(InfrastructureDevelopError)    어댑터 베이스 (5xx)
+  ├─ VerifyError                         500 · argon2 Argon2Error wrapping
+  └─ UnsupportedError                    500 · 알고리즘 미지원(sha256 verify)
 ```
 
 ### 원칙
 
-- 레이어 공통 예외는 `common/exception.py` 하나에 — 서브모듈(`crypto/` 등)에 일반 예외 파일 두지 않음. 단 dialect/어댑터 고유 typed 예외(`postgresql/exception.py`의 `UniqueViolationError`)는 그 어댑터 옆에
+- 레이어 공통 예외(베이스·여러 어댑터 공유)는 `common/exception.py`에. 어댑터 고유 typed 예외는 그 어댑터 `common/`에(`database/common/exception.py`의 `DatabaseError`/`UniqueViolationError`, `hash/common/exception.py`의 `HashError`). 진짜 dialect/구현 고유 typed 예외만 그 구현 옆에
 - `core/exception.py`는 루트 전용 — `ApplicationError` + `ClientError`/`DevelopError`만. 구체 예외(`message`/`code` 보유) 금지
-- 레이어가 내는 각 HTTP 카테고리마다 레이어 베이스 — 베이스명 `{Layer}{Category}Error`. domain은 4xx만이라 `DomainClientError` 하나, infra는 `InfrastructureClientError`(4xx, 구체는 dialect `UniqueViolationError` 409) + `InfrastructureDevelopError`(500) 둘. 모든 구체 예외는 레이어 베이스 경유 — 직접 `ClientError`/`DevelopError` 상속 우회 없음
-- 미처리 예외는 `internal()` catch-all — 단 raw 오류는 경계에서 typed 변환: DB는 `transactional_session`에서 `SQLAlchemyError → DatabaseError`, crypto는 `crypto/client.py`에서 `Exception → CryptoError`
+- 레이어가 내는 각 HTTP 카테고리마다 레이어 베이스 — 베이스명 `{Layer}{Category}Error`. domain은 4xx만이라 `DomainClientError` 하나, infra는 `InfrastructureClientError`(4xx, 구체는 `UniqueViolationError` 409 — database/common) + `InfrastructureDevelopError`(500) 둘. 모든 구체 예외는 레이어 베이스 경유 — 직접 `ClientError`/`DevelopError` 상속 우회 없음
+- 미처리 예외는 `internal()` catch-all — 단 raw 오류는 경계(어댑터)에서 typed 변환: DB는 `transactional_session`에서 `SQLAlchemyError → DatabaseError`, hash는 `argon2/client.py`에서 `Argon2Error → VerifyError`
 - 구체 예외만 `message`/`code` 채움 — 베이스(`...`)는 분류용 마디
 - core 내부 가드(`by_factory`/`typecheck`)는 새 예외 없이 `DevelopError`를 직접 raise — 구체 예외는 레이어 `common`에만
 
@@ -104,8 +108,8 @@ DevelopError - DevelopError (500)
 
 ## 안티패턴
 
-- 서브모듈에 레이어 공통 예외 파일(`crypto/exception.py`) → `common/exception.py`에 집약(dialect 고유는 예외)
+- 레이어 공통 예외(베이스·공유)를 어댑터에 흩뿌림 → `common/exception.py`에 집약. 어댑터 고유 typed 예외는 그 어댑터 `common/`에(`database/common/exception.py`·`hash/common/exception.py`)
 - `core/exception.py`에 구체 예외 추가 → 루트엔 `ApplicationError` + 2분류만
 - 구체 예외가 `ClientError`/`DevelopError`를 직접 상속 → 레이어 베이스(`{Layer}{Category}Error`) 경유
-- raw DB/crypto 오류를 그대로 전파 → 경계에서 typed 변환(`DatabaseError`/`CryptoError`)
+- raw DB/어댑터 오류를 그대로 전파 → 경계에서 typed 변환(`DatabaseError`/`HashError`)
 - 예외 핸들러를 카테고리별 N개 등록 → `client()`/`internal()` 2개로 충분(MRO 분기)
