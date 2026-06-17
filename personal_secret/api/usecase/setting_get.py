@@ -4,8 +4,8 @@ import argparse
 import asyncio
 from uuid import UUID
 
-from pydantic import BaseModel
-
+from personal_secret.api.core.usecase import In
+from personal_secret.api.core.usecase import Out
 from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.setting.key import Key
@@ -21,15 +21,22 @@ from personal_secret.api.infrastructure.database.common.session import transacti
 # #
 # input
 
-class Input(BaseModel):
+class Input(In):
     key: str
+
+
+# #
+# output
+
+class Output(Out):
+    pass
 
 
 # #
 # usecase
 
 @typecheck
-async def get(*, session, input: Input, actor_id: UUID | None = None) -> dict:
+async def get(*, session, input: Input, actor_id: UUID | None = None) -> Output:
     # find
     event, setting = SettingEvent.read(
         setting=(
@@ -48,9 +55,10 @@ async def get(*, session, input: Input, actor_id: UUID | None = None) -> dict:
     )
 
     # return
-    return {
-        "data": setting.to_dict(),
-    }
+    return Output.new(
+        data=setting.to_dict(),
+        event=None,
+    )
 
 
 # #

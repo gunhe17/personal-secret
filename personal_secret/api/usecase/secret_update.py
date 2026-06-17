@@ -4,8 +4,8 @@ import argparse
 import asyncio
 from uuid import UUID
 
-from pydantic import BaseModel
-
+from personal_secret.api.core.usecase import In
+from personal_secret.api.core.usecase import Out
 from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.secret.ciphertext import Ciphertext
@@ -21,16 +21,23 @@ from personal_secret.api.infrastructure.database.common.session import transacti
 # #
 # input
 
-class Input(BaseModel):
+class Input(In):
     id: str
     value: str
+
+
+# #
+# output
+
+class Output(Out):
+    pass
 
 
 # #
 # usecase
 
 @typecheck
-async def update(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> dict:
+async def update(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> Output:
     # find
     found = await SecretRepository.get_by_id(
         session=session,
@@ -52,9 +59,9 @@ async def update(*, session, input: Input, team_id: UUID, actor_id: UUID | None 
     )
 
     # return
-    return {
-        "data": secret.to_dict(),
-        "event": [
+    return Output.new(
+        data=secret.to_dict(),
+        event=[
             e.to_dict()
             for e in (
                 await EventRepository.emit(
@@ -65,7 +72,7 @@ async def update(*, session, input: Input, team_id: UUID, actor_id: UUID | None 
                 )
             )
         ],
-    }
+    )
 
 
 # #

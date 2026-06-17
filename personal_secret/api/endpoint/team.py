@@ -30,7 +30,7 @@ async def post_create(
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
     created = await team_create.create(session=session, input=body, account_id=account_id)
-    return JSONResponse(status_code=200, content=created)
+    return JSONResponse(status_code=200, content=created.to_dict())
 
 
 async def get_key(
@@ -39,7 +39,7 @@ async def get_key(
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
     keyed = await team_get_only_key.get_only_key(session=session, input=team_get_only_key.Input(), team_id=team_id, actor_id=membership.account_id)
-    return JSONResponse(status_code=200, content=keyed)
+    return JSONResponse(status_code=200, content=keyed.to_dict())
 
 
 # #
@@ -52,7 +52,7 @@ async def post_invite(
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
     invited = await team_invite.invite(session=session, input=body, team_id=team_id, actor_id=owner.account_id)
-    return JSONResponse(status_code=200, content=invited)
+    return JSONResponse(status_code=200, content=invited.to_dict())
 
 
 async def delete_member(
@@ -62,7 +62,7 @@ async def delete_member(
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
     removed = await team_remove.remove(session=session, input=team_remove.Input(account_id=str(account_id)), team_id=team_id, actor_id=owner.account_id)
-    return JSONResponse(status_code=200, content=removed)
+    return JSONResponse(status_code=200, content=removed.to_dict())
 
 
 async def post_rotate(
@@ -72,4 +72,4 @@ async def post_rotate(
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
     rotated = await team_rotate.rotate(session=session, input=body, team_id=team_id, actor_id=owner.account_id)
-    return JSONResponse(status_code=200, content=rotated)
+    return JSONResponse(status_code=200, content=rotated.to_dict())

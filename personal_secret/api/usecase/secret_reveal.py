@@ -4,8 +4,8 @@ import argparse
 import asyncio
 from uuid import UUID
 
-from pydantic import BaseModel
-
+from personal_secret.api.core.usecase import In
+from personal_secret.api.core.usecase import Out
 from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.secret.secret_repository import SecretRepository
@@ -20,15 +20,22 @@ from personal_secret.api.infrastructure.database.common.session import transacti
 # #
 # input
 
-class Input(BaseModel):
+class Input(In):
     id: str
+
+
+# #
+# output
+
+class Output(Out):
+    pass
 
 
 # #
 # usecase
 
 @typecheck
-async def reveal(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> dict:
+async def reveal(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> Output:
     # find
     event, secret = SecretEvent.read(
         secret=(
@@ -49,9 +56,13 @@ async def reveal(*, session, input: Input, team_id: UUID, actor_id: UUID | None 
     )
 
     # return
-    return {
-        "data": {**secret.to_dict(), "value": secret.value.to_str()},
-    }
+    return Output.new(
+        data={
+            **secret.to_dict(),
+            "value": secret.value.to_str(),
+        },
+        event=None,
+    )
 
 
 # #

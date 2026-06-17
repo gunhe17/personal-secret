@@ -4,8 +4,8 @@ import argparse
 import asyncio
 from uuid import UUID
 
-from pydantic import BaseModel
-
+from personal_secret.api.core.usecase import In
+from personal_secret.api.core.usecase import Out
 from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.team.team import Team
@@ -28,17 +28,24 @@ from personal_secret.api.infrastructure.database.common.session import transacti
 # #
 # input
 
-class Input(BaseModel):
+class Input(In):
     name: str
     # team_locked_key = 클라가 만든 team_key 를 자기 personal_lock 으로 봉인한 것
     team_locked_key: str
 
 
 # #
+# output
+
+class Output(Out):
+    pass
+
+
+# #
 # usecase
 
 @typecheck
-async def create(*, session, input: Input, account_id: UUID) -> dict:
+async def create(*, session, input: Input, account_id: UUID) -> Output:
     # create team
     team_event, team = TeamEvent.created(
         team=await TeamRepository.add(
@@ -63,9 +70,9 @@ async def create(*, session, input: Input, account_id: UUID) -> dict:
     )
 
     # return
-    return {
-        "data": team.to_dict(),
-        "event": [
+    return Output.new(
+        data=team.to_dict(),
+        event=[
             event.to_dict()
             for event in (
                 await EventRepository.emit(
@@ -75,7 +82,7 @@ async def create(*, session, input: Input, account_id: UUID) -> dict:
                 )
             )
         ],
-    }
+    )
 
 
 # #

@@ -32,7 +32,7 @@ async def post_register(
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
     registered = await auth_register.register(session=session, input=body)
-    return JSONResponse(status_code=200, content=registered)
+    return JSONResponse(status_code=200, content=registered.to_dict())
 
 
 async def get_salts(
@@ -40,7 +40,7 @@ async def get_salts(
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
     found = await auth_get_only_salts.get_only_salts(session=session, input=auth_get_only_salts.Input(email=email))
-    return JSONResponse(status_code=200, content=found)
+    return JSONResponse(status_code=200, content=found.to_dict())
 
 
 async def post_login(
@@ -48,7 +48,7 @@ async def post_login(
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
     logged_in = await auth_login.login(session=session, input=body)
-    return JSONResponse(status_code=200, content=logged_in)
+    return JSONResponse(status_code=200, content=logged_in.to_dict())
 
 
 # #

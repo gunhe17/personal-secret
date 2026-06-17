@@ -3,8 +3,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 
-from pydantic import BaseModel
-
+from personal_secret.api.core.usecase import In
+from personal_secret.api.core.usecase import Out
 from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.account.email import Email
@@ -20,15 +20,22 @@ from personal_secret.api.infrastructure.database.common.session import transacti
 # #
 # input
 
-class Input(BaseModel):
+class Input(In):
     email: str
+
+
+# #
+# output
+
+class Output(Out):
+    pass
 
 
 # #
 # usecase
 
 @typecheck
-async def get_only_salts(*, session, input: Input) -> dict:
+async def get_only_salts(*, session, input: Input) -> Output:
     # find
     event, account = AccountEvent.read(
         account=(
@@ -46,12 +53,13 @@ async def get_only_salts(*, session, input: Input) -> dict:
     )
 
     # return
-    return {
-        "data": {
+    return Output.new(
+        data={
             "personal_unlock_salt": account.personal_unlock_salt.to_str(),
             "login_salt": account.login_salt.to_str(),
         },
-    }
+        event=None,
+    )
 
 
 # #

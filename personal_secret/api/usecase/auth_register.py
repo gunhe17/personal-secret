@@ -3,8 +3,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 
-from pydantic import BaseModel
-
+from personal_secret.api.core.usecase import In
+from personal_secret.api.core.usecase import Out
 from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.account.account import Account
@@ -17,6 +17,17 @@ from personal_secret.api.domain.account.login_verifier import LoginVerifier
 from personal_secret.api.domain.account.account_repository import AccountRepository
 from personal_secret.api.domain.account.account_event import AccountEvent
 
+from personal_secret.api.domain.team.team import Team
+from personal_secret.api.domain.team.team_name import TeamName
+from personal_secret.api.domain.team.team_repository import TeamRepository
+from personal_secret.api.domain.team.team_event import TeamEvent
+
+from personal_secret.api.domain.account_team.account_team import AccountTeam
+from personal_secret.api.domain.account_team.role import Role
+from personal_secret.api.domain.account_team.team_locked_key import TeamLockedKey
+from personal_secret.api.domain.account_team.account_team_repository import AccountTeamRepository
+from personal_secret.api.domain.account_team.account_team_event import AccountTeamEvent
+
 from personal_secret.api.domain.event.event_repository import EventRepository
 
 from personal_secret.api.infrastructure.hash.argon2.client import argon2
@@ -27,22 +38,31 @@ from personal_secret.api.infrastructure.database.common.session import transacti
 # #
 # input
 
-class Input(BaseModel):
+class Input(In):
     email: str
     personal_lock: str
     personal_locked_key: str
     personal_unlock_salt: str
     login_salt: str
     login_proof: str
+    # team_locked_key = 가입자가 자기 personal team 의 team_key 를 personal_lock 으로 봉인한 것
+    team_locked_key: str
+
+
+# #
+# output
+
+class Output(Out):
+    pass
 
 
 # #
 # usecase
 
 @typecheck
-async def register(*, session, input: Input) -> dict:
-    # persist
-    event, account = AccountEvent.created(
+async def register(*, session, input: Input) -> Output:
+    # account
+    account_event, account = AccountEvent.created(
         account=await AccountRepository.add_unique_by_email(
             session=session,
             entity=Account.new(
@@ -58,19 +78,45 @@ async def register(*, session, input: Input) -> dict:
         ),
     )
 
+    # personal team
+    team_event, team = TeamEvent.created(
+        team=await TeamRepository.add(
+            session=session,
+            entity=Team.new(
+                name=TeamName.from_str("personal"),
+            ),
+        ),
+    )
+
+    # owner membership
+    member_event, _ = AccountTeamEvent.created(
+        membership=await AccountTeamRepository.add_unique_by_account_and_team(
+            session=session,
+            entity=AccountTeam.new(
+                account_id=account.id,
+                team_id=team.id,
+                role=Role.owner(),
+                team_locked_key=TeamLockedKey.from_str(input.team_locked_key),
+            ),
+        ),
+    )
+
     # return
-    return {
-        "data": account.to_dict(),
-        "event": [
+    return Output.new(
+        data={
+            **account.to_dict(),
+            "personal_team_id": str(team.id),
+        },
+        event=[
             event.to_dict()
             for event in (
                 await EventRepository.emit(
                     session=session,
-                    events=[event],
+                    events=[account_event, team_event, member_event],
                 )
             )
         ],
-    }
+    )
 
 
 # #
@@ -84,6 +130,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--personal-unlock-salt", required=True)
     parser.add_argument("--login-salt", required=True)
     parser.add_argument("--login-proof", required=True)
+    parser.add_argument("--team-locked-key", required=True)
     return parser.parse_args()
 
 async def _main():
@@ -99,6 +146,7 @@ async def _main():
                     personal_unlock_salt=args.personal_unlock_salt,
                     login_salt=args.login_salt,
                     login_proof=args.login_proof,
+                    team_locked_key=args.team_locked_key,
                 ),
             )
         )

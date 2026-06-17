@@ -22,4 +22,4 @@ async def get_public_key(
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
     found = await account_get_only_public_key.get_only_public_key(session=session, input=account_get_only_public_key.Input(email=email), actor_id=account_id)
-    return JSONResponse(status_code=200, content=found)
+    return JSONResponse(status_code=200, content=found.to_dict())

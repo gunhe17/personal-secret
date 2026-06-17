@@ -4,8 +4,8 @@ import argparse
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from pydantic import BaseModel
-
+from personal_secret.api.core.usecase import In
+from personal_secret.api.core.usecase import Out
 from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.config import get_auth_config
@@ -33,16 +33,23 @@ from personal_secret.api.infrastructure.database.common.session import transacti
 # #
 # input
 
-class Input(BaseModel):
+class Input(In):
     email: str
     login_proof: str
+
+
+# #
+# output
+
+class Output(Out):
+    pass
 
 
 # #
 # usecase
 
 @typecheck
-async def login(*, session, input: Input) -> dict:
+async def login(*, session, input: Input) -> Output:
     # find
     account = await AccountRepository.verify_email(
         session=session,
@@ -77,13 +84,13 @@ async def login(*, session, input: Input) -> dict:
     )
 
     # return
-    return {
-        "data": {
+    return Output.new(
+        data={
             "token": raw_token,
             "expires_at": issued.expires_at.to_str(),
             **account.to_keys(),
         },
-        "event": [
+        event=[
             event.to_dict()
             for event in (
                 await EventRepository.emit(
@@ -93,7 +100,7 @@ async def login(*, session, input: Input) -> dict:
                 )
             )
         ],
-    }
+    )
 
 
 # #
