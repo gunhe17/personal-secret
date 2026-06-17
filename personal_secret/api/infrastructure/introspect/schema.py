@@ -51,9 +51,6 @@ def _uniques(table) -> tuple[set, list]:
 
 
 def _fk_target(column_name: str, table_names: set) -> str | None:
-    special = {"created_by": "accounts"}
-    if column_name in special and special[column_name] in table_names:
-        return special[column_name]
     if column_name.endswith("_id") and column_name != "id":
         candidate = column_name[:-3] + "s"
         if candidate in table_names:

@@ -6,7 +6,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse
 
-from personal_secret.api.infrastructure.postgresql.session import transactional_session_helper
+from personal_secret.api.infrastructure.database.postgresql.session import transactional_session_helper
 
 from personal_secret.api.domain.account_team.account_team import AccountTeam
 

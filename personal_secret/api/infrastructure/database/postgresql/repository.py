@@ -7,11 +7,11 @@ from sqlalchemy import ColumnElement, func, select
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from personal_secret.api.core.repository import Repository
 from personal_secret.api.core.entity import Entity
 from personal_secret.api.core.model import Model
 
-from personal_secret.api.infrastructure.postgresql.exception import UniqueViolationError
+from personal_secret.api.infrastructure.database.common.repository import Repository
+from personal_secret.api.infrastructure.database.common.exception import UniqueViolationError
 
 E = TypeVar("E", bound=Entity)
 M = TypeVar("M", bound=Model)
@@ -233,4 +233,4 @@ class PostgresRepository(Repository, Generic[E, M]):
             if exclude_id is not None:
                 where.append(cls.model.id != exclude_id)  # type: ignore[attr-defined]
             if await cls._count(session=session, where=where) > 0:
-                raise UniqueViolationError(unique_key="+".join(columns))
+                raise UniqueViolationError()

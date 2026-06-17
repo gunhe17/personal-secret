@@ -5,7 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from personal_secret.api.config import get_postgres_config
 from personal_secret.api.core.model import Base
-from personal_secret.api.infrastructure.postgresql.rls import apply_rls
+from personal_secret.api.infrastructure.database.common.client import Database
+from personal_secret.api.infrastructure.database.postgresql.rls import apply_rls
 
 import personal_secret.api.domain  # noqa: F401
 
@@ -13,7 +14,7 @@ import personal_secret.api.domain  # noqa: F401
 # #
 # client
 
-class Postgres:
+class Postgres(Database):
     _tables_created = False
 
     def __init__(self, url: str):
@@ -64,7 +65,7 @@ class Postgres:
 
 
 # #
-# Postgres
+# client
 
 db_client = Postgres(get_postgres_config().database_url())
 
