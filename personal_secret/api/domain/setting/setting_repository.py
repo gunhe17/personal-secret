@@ -16,7 +16,7 @@ from personal_secret.api.domain.setting.setting import Setting
 from personal_secret.api.domain.setting.key import Key
 from personal_secret.api.domain.setting.value import Value
 
-from personal_secret.api.infrastructure.postgresql.repository import PostgresRepository
+from personal_secret.api.infrastructure.database.postgresql.repository import PostgresRepository
 
 
 # #

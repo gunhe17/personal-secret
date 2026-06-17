@@ -11,7 +11,7 @@ from personal_secret.api.core.model import Model
 from personal_secret.api.domain.team.team import Team
 from personal_secret.api.domain.team.team_name import TeamName
 
-from personal_secret.api.infrastructure.postgresql.repository import PostgresRepository
+from personal_secret.api.infrastructure.database.postgresql.repository import PostgresRepository
 
 
 # #
@@ -26,10 +26,6 @@ class TeamModel(Model):
     )
     name: Mapped[str] = mapped_column(
         String,
-        nullable=False,
-    )
-    created_by: Mapped[UUID] = mapped_column(
-        Uuid,
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -55,7 +51,6 @@ def _to_team(model: TeamModel) -> Team:
     team = Team(
         id=model.id,
         name=TeamName.from_str(model.name),
-        created_by=model.created_by,
         created_at=model.created_at,
         updated_at=model.updated_at,
         deleted_at=model.deleted_at,
