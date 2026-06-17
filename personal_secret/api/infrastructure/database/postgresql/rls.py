@@ -13,10 +13,8 @@ _TENANT_COLUMNS = {
 
 
 def _predicate(column: str) -> str:
-    return (
-        "current_setting('app.current_team', true) IS NULL "
-        f"OR {column} = current_setting('app.current_team', true)::uuid"
-    )
+    # NULL setting ↔ NULL row 만 통과 — 미설정 시 전체 노출(fail-open) 차단, global(team 없는) 행은 NULL 컨텍스트 전용
+    return f"{column} IS NOT DISTINCT FROM current_setting('app.current_team', true)::uuid"
 
 
 def apply_rls(conn) -> None:
