@@ -20,7 +20,7 @@ def typecheck(func):
                 continue
             if not isinstance(value, expected):
                 raise DevelopError(
-                    message=f"{name}: {expected} 가 필요합니다 (got {type(value).__name__}).",
+                    message=f"{name} {expected} 필요 (실제: {type(value).__name__})",
                     code=500,
                 )
         return func(*args, **kwargs)

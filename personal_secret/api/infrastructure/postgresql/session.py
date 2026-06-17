@@ -18,12 +18,15 @@ async def transactional_session(session_factory):
     try:
         yield session
         await session.commit()
+
     except SQLAlchemyError as exc:
         await session.rollback()
         raise DatabaseError(operation="transaction", reason=str(exc))
+    
     except Exception:
         await session.rollback()
         raise
+    
     finally:
         await session.close()
 

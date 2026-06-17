@@ -3,14 +3,15 @@ from __future__ import annotations
 from typing import Any, Callable, Generic, TypeVar
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from personal_secret.api.core.repository import Repository
-
 from personal_secret.api.core.entity import Entity
 from personal_secret.api.core.model import Model
+
+from personal_secret.api.infrastructure.postgresql.exception import UniqueViolationError
 
 E = TypeVar("E", bound=Entity)
 M = TypeVar("M", bound=Model)
@@ -45,18 +46,18 @@ class PostgresRepository(Repository, Generic[E, M]):
     # read
 
     @classmethod
-    async def get_by_id(cls, *, session: AsyncSession, id: UUID) -> E | None:
-        return await cls._find(session=session, equals={"id": id})
+    async def find_by_id(cls, *, session: AsyncSession, id: UUID) -> E | None:
+        return await cls._find(session=session, where=[cls.model.id == id])  # type: ignore[attr-defined]
 
     @classmethod
-    async def get_by_ids(cls, *, session: AsyncSession, ids: list[UUID]) -> list[E]:
+    async def find_by_ids(cls, *, session: AsyncSession, ids: list[UUID]) -> list[E]:
         if not ids:
             return []
-        return await cls._filter(session=session, in_={"id": ids})
+        return await cls._filter(session=session, where=[cls.model.id.in_(ids)])  # type: ignore[attr-defined]
 
     @classmethod
     async def exists_by_id(cls, *, session: AsyncSession, id: UUID) -> bool:
-        return await cls._count(session=session, equals={"id": id}) > 0
+        return await cls._count(session=session, where=[cls.model.id == id]) > 0  # type: ignore[attr-defined]
 
     @classmethod
     async def list_all(cls, *, session: AsyncSession) -> list[E]:
@@ -85,7 +86,7 @@ class PostgresRepository(Repository, Generic[E, M]):
         return persisted
 
     @classmethod
-    async def update_many(cls, *, session: AsyncSession, entities: list[E]) -> list[E]:
+    async def update_many(cls, *, session: AsyncSession, entities: list[E]) -> list[E | None]:
         persisted = [await cls.update(session=session, entity=entity) for entity in entities]
         return persisted
 
@@ -93,7 +94,7 @@ class PostgresRepository(Repository, Generic[E, M]):
     # delete
 
     @classmethod
-    async def remove_by_id(cls, *, session: AsyncSession, id: UUID) -> E:
+    async def remove_by_id(cls, *, session: AsyncSession, id: UUID) -> E | None:
         result = await session.execute(
             sql_update(cls.model)
             .where(
@@ -103,55 +104,28 @@ class PostgresRepository(Repository, Generic[E, M]):
             .values(deleted_at=func.now())
             .returning(cls.model)
         )
-        model = result.scalars().one()  # 대상 없으면 raise (NoResultFound)
+        model = result.scalars().first()
+        if model is None:
+            return None
         removed = cls.mapper(model)
         return removed
 
     # #
-    # query — filter + sort + pagination (도메인 finder가 wiring)
-
-    @classmethod
-    def _where(
-        cls,
-        *,
-        equals: dict[str, Any] | None = None,
-        lte: dict[str, Any] | None = None,
-        gte: dict[str, Any] | None = None,
-        in_: dict[str, list[Any]] | None = None,
-        like: dict[str, str] | None = None,
-    ) -> list:
-        # soft-delete 제외 + 컬럼별 조건 (전부 AND)
-        conditions = [cls.model.deleted_at.is_(None)]  # type: ignore[attr-defined]
-        for column, value in (equals or {}).items():
-            conditions.append(getattr(cls.model, column) == value)
-        for column, value in (lte or {}).items():
-            conditions.append(getattr(cls.model, column) <= value)
-        for column, value in (gte or {}).items():
-            conditions.append(getattr(cls.model, column) >= value)
-        for column, values in (in_ or {}).items():
-            conditions.append(getattr(cls.model, column).in_(values))
-        for column, value in (like or {}).items():
-            conditions.append(getattr(cls.model, column).ilike(f"%{value}%"))
-        return conditions
+    # query
 
     @classmethod
     async def _filter(
         cls,
         *,
         session: AsyncSession,
-        equals: dict[str, Any] | None = None,
-        lte: dict[str, Any] | None = None,
-        gte: dict[str, Any] | None = None,
-        in_: dict[str, list[Any]] | None = None,
-        like: dict[str, str] | None = None,
+        where: list[ColumnElement[bool]] | None = None,
         order_by: str | None = None,
         descending: bool = False,
         limit: int | None = None,
         offset: int | None = None,
     ) -> list[E]:
-        statement = select(cls.model).where(
-            *cls._where(equals=equals, lte=lte, gte=gte, in_=in_, like=like)
-        )
+        conditions = [cls.model.deleted_at.is_(None), *(where or [])]  # type: ignore[attr-defined]
+        statement = select(cls.model).where(*conditions)
         if order_by is not None:
             column = getattr(cls.model, order_by)
             statement = statement.order_by(column.desc() if descending else column.asc())
@@ -168,18 +142,16 @@ class PostgresRepository(Repository, Generic[E, M]):
         cls,
         *,
         session: AsyncSession,
-        equals: dict[str, Any] | None = None,
-        lte: dict[str, Any] | None = None,
-        gte: dict[str, Any] | None = None,
-        in_: dict[str, list[Any]] | None = None,
-        like: dict[str, str] | None = None,
+        where: list[ColumnElement[bool]] | None = None,
         order_by: str | None = None,
         descending: bool = False,
     ) -> E | None:
         rows = await cls._filter(
             session=session,
-            equals=equals, lte=lte, gte=gte, in_=in_, like=like,
-            order_by=order_by, descending=descending, limit=1,
+            where=where,
+            order_by=order_by,
+            descending=descending,
+            limit=1,
         )
         return rows[0] if rows else None
 
@@ -188,16 +160,13 @@ class PostgresRepository(Repository, Generic[E, M]):
         cls,
         *,
         session: AsyncSession,
-        equals: dict[str, Any] | None = None,
-        lte: dict[str, Any] | None = None,
-        gte: dict[str, Any] | None = None,
-        in_: dict[str, list[Any]] | None = None,
-        like: dict[str, str] | None = None,
+        where: list[ColumnElement[bool]] | None = None,
     ) -> int:
+        conditions = [cls.model.deleted_at.is_(None), *(where or [])]  # type: ignore[attr-defined]
         count = await session.scalar(
             select(func.count())
             .select_from(cls.model)
-            .where(*cls._where(equals=equals, lte=lte, gte=gte, in_=in_, like=like))
+            .where(*conditions)
         )
         return count or 0
 
@@ -208,38 +177,60 @@ class PostgresRepository(Repository, Generic[E, M]):
         session: AsyncSession,
         limit: int,
         offset: int = 0,
-        equals: dict[str, Any] | None = None,
-        lte: dict[str, Any] | None = None,
-        gte: dict[str, Any] | None = None,
-        in_: dict[str, list[Any]] | None = None,
-        like: dict[str, str] | None = None,
+        where: list[ColumnElement[bool]] | None = None,
         order_by: str | None = None,
         descending: bool = False,
     ) -> tuple[list[E], int]:
-        # 한 페이지(items) + 전체 개수(total) — 같은 필터 공유
         items = await cls._filter(
             session=session,
-            equals=equals, lte=lte, gte=gte, in_=in_, like=like,
-            order_by=order_by, descending=descending, limit=limit, offset=offset,
+            where=where,
+            order_by=order_by,
+            descending=descending,
+            limit=limit,
+            offset=offset,
         )
-        total = await cls._count(session=session, equals=equals, lte=lte, gte=gte, in_=in_, like=like)
+        total = await cls._count(session=session, where=where)
         return items, total
 
     # #
-    # query sugar (단일 컬럼 — 도메인 finder 가독성)
+    # query sugar
 
     @classmethod
     async def _find_by(cls, *, session: AsyncSession, column: str, value: Any) -> E | None:
-        return await cls._find(session=session, equals={column: value})
+        return await cls._find(session=session, where=[getattr(cls.model, column) == value])
 
     @classmethod
     async def _exists_by(cls, *, session: AsyncSession, column: str, value: Any) -> bool:
-        return await cls._count(session=session, equals={column: value}) > 0
+        return await cls._count(session=session, where=[getattr(cls.model, column) == value]) > 0
 
     @classmethod
     async def _filter_by(cls, *, session: AsyncSession, column: str, value: Any) -> list[E]:
-        return await cls._filter(session=session, equals={column: value})
+        return await cls._filter(session=session, where=[getattr(cls.model, column) == value])
 
     @classmethod
     async def _filter_by_all(cls, *, session: AsyncSession, criteria: dict[str, Any]) -> list[E]:
-        return await cls._filter(session=session, equals=criteria)
+        return await cls._filter(
+            session=session,
+            where=[getattr(cls.model, column) == value for column, value in criteria.items()],
+        )
+
+    # #
+    # guard
+
+    @classmethod
+    async def _ensure_unique(
+        cls,
+        *,
+        session: AsyncSession,
+        entity: E,
+        unique: list[str | tuple[str, ...]],
+        exclude_id: UUID | None = None,
+    ) -> None:
+        payload = entity.to_model()  # type: ignore[attr-defined]
+        for constraint in unique:
+            columns = (constraint,) if isinstance(constraint, str) else tuple(constraint)
+            where = [getattr(cls.model, c) == payload[c] for c in columns]
+            if exclude_id is not None:
+                where.append(cls.model.id != exclude_id)  # type: ignore[attr-defined]
+            if await cls._count(session=session, where=where) > 0:
+                raise UniqueViolationError(unique_key="+".join(columns))

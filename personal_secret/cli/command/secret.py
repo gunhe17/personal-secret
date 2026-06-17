@@ -4,43 +4,45 @@ import argparse
 import getpass
 import json
 import subprocess
-from datetime import datetime, timezone
 
-from personal_secret.cli.exception import CliError, UsageError
 from personal_secret.cli.infrastructure.api.client import api
-from personal_secret.cli.infrastructure.ssh.client import ssh
 
 
 # #
 # command
 
+def login(args: argparse.Namespace) -> None:
+    password = getpass.getpass("password: ")
+    result = api.login(email=args.email, password=password)
+    print(f"✓ logged in (token expires {result['data']['expires_at']})")
+
+
 def add(args: argparse.Namespace) -> None:
-    data = _collect_fields(args.field)
+    # value — inline --value, or hidden prompt (bare keys stay off the shell history)
+    value = args.value if args.value is not None else getpass.getpass(f"{args.field}: ")
     created = api.create(
-        kind=args.kind,
-        name=args.name,
-        tags=args.tag,
-        expires_at=args.expires,
-        data=data,
+        domain=args.domain,
+        service=args.service,
+        project=args.project,
+        field=args.field,
+        value=value,
     )
-    print(f"✓ added {created['kind']}:{created['name']}")
+    print(f"✓ added {created['domain']}/{created['service']}/{created['project']}/{created['field']}")
 
 
 def ls(args: argparse.Namespace) -> None:
-    rows = api.list(kind=args.kind, tag=args.tag, query=args.query)
+    rows = api.list(domain=args.domain, service=args.service, project=args.project)
     _print_table(rows)
 
 
 def get(args: argparse.Namespace) -> None:
-    revealed = api.reveal(identifier=args.identifier)
-    data = revealed.get("data", {})
+    revealed = api.reveal(id=args.id)
+    value = revealed.get("value", "")
 
-    # copy — a single field straight to the clipboard
+    # copy — straight to the clipboard, nothing printed
     if args.copy:
-        if args.copy not in data:
-            raise UsageError(f"필드 '{args.copy}' 가 없습니다. (가능: {', '.join(data)})")
-        _pbcopy(str(data[args.copy]))
-        print(f"✓ copied '{args.copy}' to clipboard")
+        _pbcopy(value)
+        print("✓ copied value to clipboard")
         return
 
     # json — raw dump
@@ -48,68 +50,35 @@ def get(args: argparse.Namespace) -> None:
         print(json.dumps(revealed, ensure_ascii=False, indent=2))
         return
 
-    # default — print every field (this is a local terminal, the point is to read it)
-    print(f"{revealed['kind']}:{revealed['name']}")
-    for key, value in data.items():
-        print(f"  {key}: {value}")
+    # default — print the value (this is a local terminal, the point is to read it)
+    print(f"{revealed['domain']}/{revealed['service']}/{revealed['project']}/{revealed['field']}")
+    print(f"  {value}")
 
 
 def rm(args: argparse.Namespace) -> None:
     if not args.yes:
-        answer = input(f'delete "{args.identifier}"? [y/N] ').strip().lower()
+        answer = input(f'delete "{args.id}"? [y/N] ').strip().lower()
         if answer != "y":
             print("aborted")
             return
-    api.delete(identifier=args.identifier)
+    api.delete(id=args.id)
     print("✓ deleted")
-
-
-def ssh_connect(args: argparse.Namespace) -> None:
-    revealed = api.reveal(identifier=args.name)
-    if revealed["kind"] != "ssh":
-        raise UsageError(f"'{args.name}' 는 ssh 시크릿이 아닙니다 (kind={revealed['kind']}).")
-    ssh.connect(data=revealed.get("data", {}))
-
-
-def expiring(args: argparse.Namespace) -> None:
-    rows = api.expiring(within_days=args.days)
-    if not rows:
-        print(f"(none expiring within {args.days}d)")
-        return
-    now = datetime.now(timezone.utc)
-    for row in rows:
-        left = (datetime.fromisoformat(row["expires_at"]) - now).days
-        marker = "EXPIRED" if left < 0 else f"{left}d"
-        print(f"  {marker:>8}  {row['kind']}:{row['name']}")
 
 
 # #
 # internal
 
-def _collect_fields(raw: list[str]) -> dict:
-    # each entry is "key=value"; a bare "key" prompts (hidden) for a sensitive value
-    data: dict[str, str] = {}
-    for item in raw:
-        if "=" in item:
-            key, value = item.split("=", 1)
-            data[key.strip()] = value
-        else:
-            key = item.strip()
-            data[key] = getpass.getpass(f"{key}: ")
-    if not data:
-        raise CliError("필드가 비어 있습니다. --field key=value 로 지정하세요.")
-    return data
-
-
 def _print_table(rows: list[dict]) -> None:
     if not rows:
         print("(none)")
         return
-    width = max(len(r["name"]) for r in rows)
+    width = max(len(_path(r)) for r in rows)
     for row in rows:
-        tags = " ".join(row.get("tags", []))
-        expires = row["expires_at"] or "-"
-        print(f"  {row['name']:<{width}}  {row['kind']:<8}  {expires:<26}  {tags}")
+        print(f"  {_path(row):<{width}}  {row['id']}")
+
+
+def _path(row: dict) -> str:
+    return f"{row['domain']}/{row['service']}/{row['project']}/{row['field']}"
 
 
 def _pbcopy(value: str) -> None:

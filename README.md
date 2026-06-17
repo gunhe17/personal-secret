@@ -98,5 +98,5 @@ secret lock
 
 ## 아키텍처
 
-`.claude/docs/python-architecture.md` · `.claude/docs/python-style.md` 의 DDD 5계층 규약을 따릅니다
-(`endpoint → usecase → domain → infrastructure → core`).
+`.claude/docs/api/` 의 DDD 규약을 따릅니다
+(`bin → server → endpoint → usecase → domain → infrastructure → core`). 루트 인덱스는 [`.claude/docs/api/api.md`](.claude/docs/api/api.md) — 라우팅 표 + 불변식(INV)을 담고, 상세는 패턴별 `reference/`, 작업 절차는 `recipe/`로 분리됩니다.

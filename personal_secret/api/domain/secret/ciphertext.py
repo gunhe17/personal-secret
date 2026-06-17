@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import builtins
 from dataclasses import dataclass
 
 from personal_secret.api.core.value_object import ValueObject
@@ -17,12 +16,12 @@ class Ciphertext(ValueObject):
     # factory
 
     @classmethod
-    def from_bytes(cls, *, bytes) -> "Ciphertext":
+    def from_bytes(cls, value: bytes) -> "Ciphertext":
         # type
-        if not isinstance(bytes, builtins.bytes):
+        if not isinstance(value, bytes):
             raise InvalidError("Ciphertext")
 
-        return cls(_value=bytes, by_factory=True)
+        return cls(_value=value, by_factory=True)
 
     @classmethod
     def from_str(cls, value) -> "Ciphertext":

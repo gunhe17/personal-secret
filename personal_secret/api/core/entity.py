@@ -21,6 +21,6 @@ class Entity:
     def __post_init__(self, by_factory: bool):
         if not by_factory:
             raise DevelopError(
-                message=f"{type(self).__name__}: 팩토리(new/with_*)로만 생성할 수 있습니다.",
+                message=f"{type(self).__name__} 팩토리로만 생성 가능 (허용: new/with_*)",
                 code=500,
             )

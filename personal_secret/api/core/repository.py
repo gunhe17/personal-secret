@@ -26,12 +26,12 @@ class Repository(ABC):
 
     @classmethod
     @abstractmethod
-    async def get_by_id(cls, *, session: AsyncSession, id: UUID) -> Any | None:
+    async def find_by_id(cls, *, session: AsyncSession, id: UUID) -> Any | None:
         ...
 
     @classmethod
     @abstractmethod
-    async def get_by_ids(cls, *, session: AsyncSession, ids: list[UUID]) -> list[Any]:
+    async def find_by_ids(cls, *, session: AsyncSession, ids: list[UUID]) -> list[Any]:
         ...
 
     @classmethod
@@ -49,7 +49,7 @@ class Repository(ABC):
 
     @classmethod
     @abstractmethod
-    async def update(cls, *, session: AsyncSession, entity: Any) -> Any:
+    async def update(cls, *, session: AsyncSession, entity: Any) -> Any | None:
         ...
 
     @classmethod
