@@ -18,8 +18,8 @@ from personal_secret.api.domain.secret.project import Project
 from personal_secret.api.domain.secret.field import Field
 from personal_secret.api.domain.secret.ciphertext import Ciphertext
 
-from personal_secret.api.infrastructure.postgresql.repository import PostgresRepository
-from personal_secret.api.infrastructure.postgresql.exception import UniqueViolationError
+from personal_secret.api.infrastructure.database.postgresql.repository import PostgresRepository
+from personal_secret.api.infrastructure.database.common.exception import UniqueViolationError
 
 
 # #

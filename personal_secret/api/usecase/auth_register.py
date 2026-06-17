@@ -19,9 +19,9 @@ from personal_secret.api.domain.account.account_event import AccountEvent
 
 from personal_secret.api.domain.event.event_repository import EventRepository
 
-from personal_secret.api.infrastructure.crypto.client import crypto
-from personal_secret.api.infrastructure.postgresql.client import db_client
-from personal_secret.api.infrastructure.postgresql.session import transactional_session
+from personal_secret.api.infrastructure.hash.argon2.client import argon2
+from personal_secret.api.infrastructure.database.postgresql.client import db_client
+from personal_secret.api.infrastructure.database.common.session import transactional_session
 
 
 # #
@@ -52,7 +52,7 @@ async def register(*, session, input: Input) -> dict:
                 personal_unlock_salt=PersonalUnlockSalt.from_str(input.personal_unlock_salt),
                 login_salt=LoginSalt.from_str(input.login_salt),
                 login_verifier=LoginVerifier.from_str(
-                    crypto.hash_password(password=input.login_proof),
+                    argon2.hash(value=input.login_proof),
                 ),
             ),
         ),

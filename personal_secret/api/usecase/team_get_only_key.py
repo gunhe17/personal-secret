@@ -13,8 +13,8 @@ from personal_secret.api.domain.account_team.account_team_event import AccountTe
 
 from personal_secret.api.domain.event.event_repository import EventRepository
 
-from personal_secret.api.infrastructure.postgresql.client import db_client
-from personal_secret.api.infrastructure.postgresql.session import transactional_session
+from personal_secret.api.infrastructure.database.postgresql.client import db_client
+from personal_secret.api.infrastructure.database.common.session import transactional_session
 
 
 # #

@@ -1,8 +1,8 @@
 ---
 paths:
   - "personal_secret/api/**/*_repository.py"
-  - "personal_secret/api/infrastructure/postgresql/repository.py"
-  - "personal_secret/api/core/repository.py"
+  - "personal_secret/api/infrastructure/database/postgresql/repository.py"
+  - "personal_secret/api/infrastructure/database/common/repository.py"
   - "personal_secret/api/core/model.py"
 ---
 
@@ -30,15 +30,15 @@ paths:
 ## 계층 — 추상 / 일반화 / wiring
 
 ```
-core/repository.py            Repository[T]            추상 classmethod (add/find_by_id/update/remove_by_id), 반환 E|None
-infrastructure/postgresql/
-  repository.py               PostgresRepository[T,M]  query/CRUD 일반화 concrete 부모
+infrastructure/database/
+  common/repository.py        Repository[T]            추상 classmethod (add/find_by_id/update/remove_by_id), 반환 E|None
+  postgresql/repository.py    PostgresRepository[T,M]  query/CRUD 일반화 concrete 부모
 domain/{agg}/{agg}_repository.py
                               {Aggregate}Repository    Model 동거 + class vars(model/mapper) + 커스텀 finder wiring
 ```
 
-- 추상 계약(core): 단건 fetch/write 반환은 nullable(`Any | None`) — base는 business 예외 raise 안 함 ([INV-3])
-- 일반화 부모(infra): 도메인이 2개 이상 entity에 같은 패턴을 반복하면 여기로 끌어올린다. 중간 파일(`infrastructure/postgresql/{agg}_repository.py`) 금지 — domain repo가 `PostgresRepository`를 직접 상속
+- 추상 계약(database/common): 단건 fetch/write 반환은 nullable(`Any | None`) — base는 business 예외 raise 안 함 ([INV-3])
+- 일반화 부모(infra): 도메인이 2개 이상 entity에 같은 패턴을 반복하면 여기로 끌어올린다. 중간 파일(`infrastructure/database/postgresql/{agg}_repository.py`) 금지 — domain repo가 `PostgresRepository`를 직접 상속
 - wiring(domain): class variables(`model`/`mapper`)만 정의하면 base classmethod가 `cls.model`/`cls.mapper`로 동작(`__init__`/`__init_subclass__` 없음). 일반화 안 된 도메인 동작만 `@classmethod`로 직접 구현
 
 ---
@@ -117,7 +117,7 @@ usecase는 반환 entity를 `to_dict()` — 생성/수정 응답에도 타임스
 
 유일성은 base 사전검사 guard + 도메인 변환의 2계층. domain repo가 `{action}_unique_by_{col}`로 노출한다.
 
-- base `_ensure_unique(*, session, entity, unique: list[str | tuple], exclude_id=None) -> None`: `unique`의 각 원소 = 제약 1개 — `str`은 단일 컬럼, `tuple`은 복합(그룹 내 컬럼 AND). 제약마다 `_count` 검사, 있으면 infra `UniqueViolationError`(`postgresql/exception.py`, 409) raise. update 자기 행은 `exclude_id`로 제외. `deleted_at IS NULL` 자동(soft-delete된 이름 재사용 허용, partial unique index와 일치)
+- base `_ensure_unique(*, session, entity, unique: list[str | tuple], exclude_id=None) -> None`: `unique`의 각 원소 = 제약 1개 — `str`은 단일 컬럼, `tuple`은 복합(그룹 내 컬럼 AND). 제약마다 `_count` 검사, 있으면 infra `UniqueViolationError`(`database/common/exception.py`, 409) raise. update 자기 행은 `exclude_id`로 제외. `deleted_at IS NULL` 자동(soft-delete된 이름 재사용 허용, partial unique index와 일치)
 - domain 변환: `try/except`로 `UniqueViolationError`(infra) → `AlreadyExistsError`(domain). base는 도메인 예외를 모른다
 - 메서드명에 유일 컬럼 명시(`add_unique_by_name`/`update_unique_by_name`), 복합키는 tuple로 묶는다 — `add_unique_by_name_and_kind` + `unique=[("name", "kind")]` (`["name", "kind"]`는 두 컬럼을 *각각* 검사하는 OR이라 복합 아님)
 - write는 `_ensure_unique` 밖에서 호출 — `cls.add`는 `-> E`, `cls.update`는 도메인 must-exist override라 `-> E`. update는 `exclude_id=entity.id`로 자기 행 제외
@@ -156,5 +156,5 @@ async def add_unique_by_name(cls, *, session, entity: Secret) -> Secret:
 - domain repo `__init__`/`__init_subclass__` → `model`/`mapper` class variable만
 - domain repo 메서드를 인스턴스 메서드(`self`)로 / repo 싱글톤·인스턴스화 → 전부 `@classmethod`, 클래스 자체 호출 ([INV-6])
 - base CRUD passthrough override(`async def add(...): return await super().add(...)`) → 제네릭이 타입 좁힘. 본문 있는 도메인 가드일 때만 override
-- `infrastructure/postgresql/{agg}_repository.py` 중간 파일 → domain repo가 `PostgresRepository` 직접 상속
+- `infrastructure/database/postgresql/{agg}_repository.py` 중간 파일 → domain repo가 `PostgresRepository` 직접 상속
 - unique 충돌을 usecase에서 검사·raise → domain `{action}_unique_by_{col}` ([INV-9])

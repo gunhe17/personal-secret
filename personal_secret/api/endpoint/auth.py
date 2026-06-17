@@ -16,8 +16,8 @@ from personal_secret.api.domain.token.token_repository import TokenRepository
 from personal_secret.api.domain.account_team.account_team import AccountTeam
 from personal_secret.api.domain.account_team.account_team_repository import AccountTeamRepository
 
-from personal_secret.api.infrastructure.crypto.client import crypto
-from personal_secret.api.infrastructure.postgresql.session import transactional_session_helper
+from personal_secret.api.infrastructure.hash.sha256.client import sha256
+from personal_secret.api.infrastructure.database.postgresql.session import transactional_session_helper
 
 from personal_secret.api.usecase import auth_register
 from personal_secret.api.usecase import auth_login
@@ -66,7 +66,7 @@ async def require_auth(
     # lookup
     token = await TokenRepository.find_by_fingerprint(
         session=session,
-        fingerprint=Fingerprint.from_str(crypto.hash_token(token=raw)),
+        fingerprint=Fingerprint.from_str(sha256.hash(value=raw)),
     )
     if token is None or token.is_expired(now=datetime.now(timezone.utc)):
         raise UnauthorizedError()

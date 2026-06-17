@@ -13,7 +13,7 @@ from personal_secret.api.domain.token.token import Token
 from personal_secret.api.domain.token.fingerprint import Fingerprint
 from personal_secret.api.domain.token.expires_at import ExpiresAt
 
-from personal_secret.api.infrastructure.postgresql.repository import PostgresRepository
+from personal_secret.api.infrastructure.database.postgresql.repository import PostgresRepository
 
 
 # #

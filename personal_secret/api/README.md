@@ -11,4 +11,5 @@
 
 - **domain/vault** — 마스터 키 봉투(`salt`, `wrapped_dek`). 단일 행 집합체.
 - **domain/secret** — 시크릿(`kind`, `name`, `tags`, `expires_at`, `ciphertext`). 본문은 암호화.
-- **infrastructure/crypto** — Argon2id KDF + AES-256-GCM(`client.py`) + unlock 세션(`cache.py`).
+- **infrastructure/hash** — 알고리즘별 해시 클라이언트(`argon2`/`sha256`, 공통 ABC `common`). 도메인 무지 — 무엇을 해싱하는지는 호출처가 안다.
+- **infrastructure/token** — 불투명 세션 토큰 발급(`secrets`).

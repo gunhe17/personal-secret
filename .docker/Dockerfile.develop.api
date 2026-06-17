@@ -14,3 +14,5 @@ COPY pyproject.toml ./
 RUN uv pip compile pyproject.toml --extra app -o /tmp/reqs.txt && \
     uv pip install --system -r /tmp/reqs.txt && \
     rm /tmp/reqs.txt
+
+CMD ["python", "-m", "personal_secret.api.bin.server"]

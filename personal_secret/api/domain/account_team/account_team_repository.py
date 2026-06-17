@@ -15,8 +15,8 @@ from personal_secret.api.domain.account_team.account_team import AccountTeam
 from personal_secret.api.domain.account_team.role import Role
 from personal_secret.api.domain.account_team.team_locked_key import TeamLockedKey
 
-from personal_secret.api.infrastructure.postgresql.repository import PostgresRepository
-from personal_secret.api.infrastructure.postgresql.exception import UniqueViolationError
+from personal_secret.api.infrastructure.database.postgresql.repository import PostgresRepository
+from personal_secret.api.infrastructure.database.common.exception import UniqueViolationError
 
 
 # #

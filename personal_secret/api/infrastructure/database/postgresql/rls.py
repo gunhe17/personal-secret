@@ -4,11 +4,8 @@ from sqlalchemy import text
 
 
 # #
-# row-level security — 테넌트 격리 백스톱
-# {테넌트 컬럼} == current_setting('app.current_team') 일 때만 행 노출/삽입.
-# current_team 미설정(시스템 경로)이면 전체 허용.
+# row-level security
 
-# 테이블별 테넌트 컬럼 — secrets 는 team_id, events 는 actor_team_id(행위 팀)
 _TENANT_COLUMNS = {
     "secrets": "team_id",
     "events": "actor_team_id",

@@ -15,7 +15,7 @@ from personal_secret.api.domain.event.act import Act
 from personal_secret.api.domain.event.entity_name import EntityName
 from personal_secret.api.domain.event.payload import Payload
 
-from personal_secret.api.infrastructure.postgresql.repository import PostgresRepository
+from personal_secret.api.infrastructure.database.postgresql.repository import PostgresRepository
 
 
 # #

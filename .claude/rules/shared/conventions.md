@@ -113,7 +113,7 @@ if not re.match(...):
 폴더 컨텍스트 중복 금지:
 
 ```
-infrastructure/postgresql/client.py
+infrastructure/database/postgresql/client.py
   class PostgresqlClient        →  class Postgres
 ```
 
@@ -137,7 +137,7 @@ domain/secret/secret_repository.py
   class SecretModel, class SecretRepository       # "Model"/"Repository" 보존
 ```
 
-분별 단어(`Cache`, `Model`, `Repository`)는 유지하되 폴더 prefix(`Secret`, `Crypto`)는 유지/생략 모두 가능. 베이스 ABC가 일반 이름(`Repository`, `Entity`)일 때만 서브에 도메인 prefix 부여로 충돌 회피.
+분별 단어(`Cache`, `Model`, `Repository`)는 유지하되 폴더 prefix(`Secret`, `Postgres`)는 유지/생략 모두 가능. 베이스 ABC가 일반 이름(`Repository`, `Entity`)일 때만 서브에 도메인 prefix 부여로 충돌 회피.
 
 | 대상 | 형태 | 예 |
 |------|------|-----|
@@ -399,7 +399,7 @@ return {
 
 인라인 라벨은 영어 한 단어(`# find`, `# event`). 라벨 뒤 한국어 부연은 코드가 드러내지 못하는 것 — 비자명한 의도(why)·입력 계약·주의(gotcha) — 일 때만 단다. 코드가 이미 보여주는 동작(what)을 한국어로 재서술하지 않는다.
 
-> 기본값은 라벨만. 부연은 *예외*다. 부연을 쓰기 전에 "이게 코드·시그니처·타입·docs 중 어디에도 없는 정보인가?"를 물어라. 아니면 지운다.
+> **기본은 라벨만 — 괄호 부연을 적으려는 손을 멈춰라.** 대부분은 코드·시그니처·타입·docs가 이미 말하는 재서술이다. "어디에도 없는 why/계약/함정인가?"에 확실히 yes일 때만 남기고, 애매하면 지운다.
 
 - 형식: `# label (짧은 한국어 단서)`. 부연은 *왜/계약/함정* 한 조각만.
 - 냄새 신호: `# label — A + B → C`처럼 코드 흐름을 나열하는 산문 체인. 코드를 읽으면 보이는 내용이라 가치 0 → 라벨만 남긴다.

@@ -23,9 +23,11 @@ from personal_secret.api.domain.token.token_event import TokenEvent
 
 from personal_secret.api.domain.event.event_repository import EventRepository
 
-from personal_secret.api.infrastructure.crypto.client import crypto
-from personal_secret.api.infrastructure.postgresql.client import db_client
-from personal_secret.api.infrastructure.postgresql.session import transactional_session
+from personal_secret.api.infrastructure.hash.argon2.client import argon2
+from personal_secret.api.infrastructure.hash.sha256.client import sha256
+from personal_secret.api.infrastructure.token.secrets.client import token
+from personal_secret.api.infrastructure.database.postgresql.client import db_client
+from personal_secret.api.infrastructure.database.common.session import transactional_session
 
 
 # #
@@ -49,23 +51,23 @@ async def login(*, session, input: Input) -> dict:
 
     # verify
     if not (
-        crypto.verify_password(
+        argon2.verify(
             hash=account.login_verifier.to_str(),
-            password=input.login_proof,
+            value=input.login_proof,
         )
     ):
         raise InvalidCredentialError()
 
     # issue
-    raw_token = crypto.generate_token()
+    raw_token = token.generate()
 
-    event, token = TokenEvent.created(
+    event, issued = TokenEvent.created(
         token=await TokenRepository.add(
             session=session,
             entity=Token.new(
                 account_id=account.id,
                 fingerprint=Fingerprint.from_str(
-                    crypto.hash_token(token=raw_token)
+                    sha256.hash(value=raw_token)
                 ),
                 expires_at=ExpiresAt.from_datetime(
                     datetime.now(timezone.utc) + timedelta(seconds=get_auth_config().TOKEN_TTL_SEC)
@@ -78,7 +80,7 @@ async def login(*, session, input: Input) -> dict:
     return {
         "data": {
             "token": raw_token,
-            "expires_at": token.expires_at.to_str(),
+            "expires_at": issued.expires_at.to_str(),
             **account.to_keys(),
         },
         "event": [
