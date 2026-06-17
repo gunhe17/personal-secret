@@ -4,8 +4,8 @@ import argparse
 import asyncio
 from uuid import UUID
 
-from pydantic import BaseModel
-
+from personal_secret.api.core.usecase import In
+from personal_secret.api.core.usecase import Out
 from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.secret.secret import Secret
@@ -26,7 +26,7 @@ from personal_secret.api.infrastructure.database.common.session import transacti
 # #
 # input
 
-class Input(BaseModel):
+class Input(In):
     domain: str
     service: str
     project: str
@@ -35,10 +35,17 @@ class Input(BaseModel):
 
 
 # #
+# output
+
+class Output(Out):
+    pass
+
+
+# #
 # usecase
 
 @typecheck
-async def create(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> dict:
+async def create(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> Output:
     # persist
     event, entity = SecretEvent.created(
         secret=(
@@ -58,9 +65,9 @@ async def create(*, session, input: Input, team_id: UUID, actor_id: UUID | None 
     )
 
     # return
-    return {
-        "data": entity.to_dict(),
-        "event": [
+    return Output.new(
+        data=entity.to_dict(),
+        event=[
             event.to_dict()
             for event in (
                 await EventRepository.emit(
@@ -71,7 +78,7 @@ async def create(*, session, input: Input, team_id: UUID, actor_id: UUID | None 
                 )
             )
         ],
-    }
+    )
 
 
 # #

@@ -5,8 +5,8 @@ import asyncio
 import json
 from typing import Any
 
-from pydantic import BaseModel
-
+from personal_secret.api.core.usecase import In
+from personal_secret.api.core.usecase import Out
 from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.setting.key import Key
@@ -23,16 +23,23 @@ from personal_secret.api.infrastructure.database.common.session import transacti
 # #
 # input
 
-class Input(BaseModel):
+class Input(In):
     key: str
     value: Any
+
+
+# #
+# output
+
+class Output(Out):
+    pass
 
 
 # #
 # usecase
 
 @typecheck
-async def set_setting(*, session, input: Input) -> dict:
+async def set_setting(*, session, input: Input) -> Output:
     # set
     event, setting = SettingEvent.updated(
         setting=(
@@ -45,9 +52,9 @@ async def set_setting(*, session, input: Input) -> dict:
     )
 
     # return
-    return {
-        "data": setting.to_dict(),
-        "event": [
+    return Output.new(
+        data=setting.to_dict(),
+        event=[
             e.to_dict()
             for e in (
                 await EventRepository.emit(
@@ -56,7 +63,7 @@ async def set_setting(*, session, input: Input) -> dict:
                 )
             )
         ],
-    }
+    )
 
 
 # #

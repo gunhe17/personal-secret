@@ -23,7 +23,7 @@ FastAPI route handlers. usecase 호출 + HTTP 응답 변환. 비즈니스 로직
 
 ## 책임 + 패턴
 
-aggregate별 route handler 모음(`secret.py`). usecase 함수를 호출하고 결과(usecase가 조립한 인라인 dict)를 그대로 HTTP 응답으로 변환만 한다 — **[INV-8]**.
+aggregate별 route handler 모음(`secret.py`). usecase 함수를 호출하고 결과(`Output`)를 `.to_dict()`로 직렬화해 HTTP 응답으로 변환만 한다 — **[INV-8]**.
 
 ```python
 from fastapi import Depends
@@ -41,7 +41,7 @@ async def post_create(
     session: AsyncSession = Depends(transactional_session_helper),
 ) -> JSONResponse:
     created = await create.create(session=session, input=body)
-    return JSONResponse(status_code=200, content=created)
+    return JSONResponse(status_code=200, content=created.to_dict())
 ```
 
 - 핸들러는 HTTP 메서드 접두 — `post_create`/`get_reveal`. 라우트 메서드를 이름에서 바로 읽는다(usecase 함수명 `create`/`reveal`과 구분)
@@ -56,5 +56,5 @@ async def post_create(
 
 - endpoint에서 입력 검증·도메인 조작·transaction 조정 → 아래 레이어로, endpoint는 얇게
 - 예외를 endpoint에서 try/except → 핸들러 자동 분기 ([INV-4])
-- usecase 결과를 재가공/래핑 → 인라인 dict 그대로 응답 ([INV-8])
+- usecase 결과를 재가공/래핑 → `Output.to_dict()` 그대로 응답 ([INV-8])
 - endpoint가 자기를 라우터에 등록 → `bin/server.py` 단일 출처 ([server.md](server.md))

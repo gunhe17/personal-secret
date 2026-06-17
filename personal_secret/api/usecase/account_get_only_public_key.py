@@ -4,8 +4,8 @@ import argparse
 import asyncio
 from uuid import UUID
 
-from pydantic import BaseModel
-
+from personal_secret.api.core.usecase import In
+from personal_secret.api.core.usecase import Out
 from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.account.email import Email
@@ -21,15 +21,22 @@ from personal_secret.api.infrastructure.database.common.session import transacti
 # #
 # input
 
-class Input(BaseModel):
+class Input(In):
     email: str
+
+
+# #
+# output
+
+class Output(Out):
+    pass
 
 
 # #
 # usecase
 
 @typecheck
-async def get_only_public_key(*, session, input: Input, actor_id: UUID | None = None) -> dict:
+async def get_only_public_key(*, session, input: Input, actor_id: UUID | None = None) -> Output:
     # find
     event, account = AccountEvent.read(
         account=(
@@ -48,12 +55,13 @@ async def get_only_public_key(*, session, input: Input, actor_id: UUID | None = 
     )
 
     # return
-    return {
-        "data": {
+    return Output.new(
+        data={
             "account_id": str(account.id),
             "personal_lock": account.personal_lock.to_str(),
         },
-    }
+        event=None,
+    )
 
 
 # #

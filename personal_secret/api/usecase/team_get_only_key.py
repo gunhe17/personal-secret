@@ -4,8 +4,8 @@ import argparse
 import asyncio
 from uuid import UUID
 
-from pydantic import BaseModel
-
+from personal_secret.api.core.usecase import In
+from personal_secret.api.core.usecase import Out
 from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.account_team.account_team_repository import AccountTeamRepository
@@ -20,7 +20,14 @@ from personal_secret.api.infrastructure.database.common.session import transacti
 # #
 # input
 
-class Input(BaseModel):
+class Input(In):
+    pass
+
+
+# #
+# output
+
+class Output(Out):
     pass
 
 
@@ -28,7 +35,7 @@ class Input(BaseModel):
 # usecase
 
 @typecheck
-async def get_only_key(*, session, input: Input, team_id: UUID, actor_id: UUID) -> dict:
+async def get_only_key(*, session, input: Input, team_id: UUID, actor_id: UUID) -> Output:
     # find
     event, membership = AccountTeamEvent.read(
         membership=(
@@ -49,9 +56,10 @@ async def get_only_key(*, session, input: Input, team_id: UUID, actor_id: UUID) 
     )
 
     # return
-    return {
-        "data": membership.to_keys(),
-    }
+    return Output.new(
+        data=membership.to_keys(),
+        event=None,
+    )
 
 
 # #

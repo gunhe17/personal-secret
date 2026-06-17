@@ -4,8 +4,8 @@ import argparse
 import asyncio
 from uuid import UUID
 
-from pydantic import BaseModel
-
+from personal_secret.api.core.usecase import In
+from personal_secret.api.core.usecase import Out
 from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.secret.domain import Domain
@@ -23,7 +23,7 @@ from personal_secret.api.infrastructure.database.common.session import transacti
 # #
 # input
 
-class Input(BaseModel):
+class Input(In):
     domain: str | None = None
     service: str | None = None
     project: str | None = None
@@ -32,10 +32,17 @@ class Input(BaseModel):
 
 
 # #
+# output
+
+class Output(Out):
+    pass
+
+
+# #
 # usecase
 
 @typecheck
-async def list_secrets(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> dict:
+async def list_secrets(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> Output:
     # find
     founds = SecretEvent.read_many(
         secrets=(
@@ -66,9 +73,10 @@ async def list_secrets(*, session, input: Input, team_id: UUID, actor_id: UUID |
     )
 
     # return
-    return {
-        "data": [secret.to_dict() for _, secret in founds],
-    }
+    return Output.new(
+        data=[secret.to_dict() for _, secret in founds],
+        event=None,
+    )
 
 
 # #

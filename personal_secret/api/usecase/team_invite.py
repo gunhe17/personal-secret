@@ -4,8 +4,8 @@ import argparse
 import asyncio
 from uuid import UUID
 
-from pydantic import BaseModel
-
+from personal_secret.api.core.usecase import In
+from personal_secret.api.core.usecase import Out
 from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.account_team.account_team import AccountTeam
@@ -23,7 +23,7 @@ from personal_secret.api.infrastructure.database.common.session import transacti
 # #
 # input
 
-class Input(BaseModel):
+class Input(In):
     account_id: str
     role: str = "member"
     # team_key 를 초대받는이 personal_lock 으로 봉인한 사본 (초대자 클라가 생성)
@@ -31,10 +31,17 @@ class Input(BaseModel):
 
 
 # #
+# output
+
+class Output(Out):
+    pass
+
+
+# #
 # usecase
 
 @typecheck
-async def invite(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> dict:
+async def invite(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> Output:
     # persist
     event, membership = AccountTeamEvent.created(
         membership=await AccountTeamRepository.add_unique_by_account_and_team(
@@ -49,9 +56,9 @@ async def invite(*, session, input: Input, team_id: UUID, actor_id: UUID | None 
     )
 
     # return
-    return {
-        "data": membership.to_dict(),
-        "event": [
+    return Output.new(
+        data=membership.to_dict(),
+        event=[
             event.to_dict()
             for event in (
                 await EventRepository.emit(
@@ -62,7 +69,7 @@ async def invite(*, session, input: Input, team_id: UUID, actor_id: UUID | None 
                 )
             )
         ],
-    }
+    )
 
 
 # #

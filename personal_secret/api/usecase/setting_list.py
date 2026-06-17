@@ -4,8 +4,8 @@ import argparse
 import asyncio
 from uuid import UUID
 
-from pydantic import BaseModel
-
+from personal_secret.api.core.usecase import In
+from personal_secret.api.core.usecase import Out
 from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.setting.setting_repository import SettingRepository
@@ -20,16 +20,23 @@ from personal_secret.api.infrastructure.database.common.session import transacti
 # #
 # input
 
-class Input(BaseModel):
+class Input(In):
     limit: int | None = None
     offset: int | None = None
+
+
+# #
+# output
+
+class Output(Out):
+    pass
 
 
 # #
 # usecase
 
 @typecheck
-async def list_settings(*, session, input: Input, actor_id: UUID | None = None) -> dict:
+async def list_settings(*, session, input: Input, actor_id: UUID | None = None) -> Output:
     # find
     founds = SettingEvent.read_many(
         settings=(
@@ -49,9 +56,10 @@ async def list_settings(*, session, input: Input, actor_id: UUID | None = None) 
     )
 
     # return
-    return {
-        "data": [setting.to_dict() for _, setting in founds],
-    }
+    return Output.new(
+        data=[setting.to_dict() for _, setting in founds],
+        event=None,
+    )
 
 
 # #
