@@ -1,25 +1,29 @@
 from __future__ import annotations
 
-from uuid import UUID
-
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse
 
-from personal_secret.api.infrastructure.database.postgresql.session import transactional_session_helper
-
-from personal_secret.api.endpoint.auth import require_auth
+from personal_secret.api.behavior import (
+    use_postgresql_session_with_authenticated_account_and_event,
+    use_postgresql_context_with_authenticated_account_and_event
+)
 
 from personal_secret.api.usecase import account_get_only_public_key
 
 
 # #
-# command (인증 필요 — 공개키 열람으로 계정 enumeration 방지)
+# command
 
 async def get_public_key(
     email: str,
-    account_id: UUID = Depends(require_auth),
-    session: AsyncSession = Depends(transactional_session_helper),
+    *,
+    session=Depends(use_postgresql_session_with_authenticated_account_and_event),
+    context=Depends(use_postgresql_context_with_authenticated_account_and_event),
 ) -> JSONResponse:
-    found = await account_get_only_public_key.get_only_public_key(session=session, input=account_get_only_public_key.Input(email=email), actor_id=account_id)
+    found = await account_get_only_public_key.get_only_public_key(
+        session=session,
+        event_group_id=context.event_group_id,
+        input=account_get_only_public_key.Input(email=email),
+        account_id=context.account_id,
+    )
     return JSONResponse(status_code=200, content=found.to_dict())
