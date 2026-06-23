@@ -15,9 +15,9 @@ class HashError(InfrastructureDevelopError):
 
 class VerifyError(HashError):
     def __init__(self, reason: str):
-        super().__init__(message=f"hash verify 실패 (원인: {reason})", code=500)
+        super().__init__(key="hash_verify_failed", params={"reason": reason}, code=500)
 
 
 class UnsupportedError(HashError):
     def __init__(self, operation: str):
-        super().__init__(message=f"hash {operation} 미지원", code=500)
+        super().__init__(key="hash_unsupported", params={"operation": operation}, code=500)

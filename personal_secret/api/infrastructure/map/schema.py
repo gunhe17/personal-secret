@@ -5,7 +5,8 @@ from personal_secret.api.core.model import Base
 
 
 # #
-# introspect — SQLAlchemy metadata(= 도메인 모델의 실제 정의)에서 스키마 추출
+# schema
+
 # FK 는 미선언(raw UUID)이라 컬럼 컨벤션으로 추론: {x}_id → {x}s
 
 def build_schema() -> dict:

@@ -67,7 +67,7 @@ class Postgres(Database):
 # #
 # client
 
-db_client = Postgres(get_postgres_config().database_url())
+db_client = Postgres(get_postgres_config().async_database_url())
 
 
 # #
