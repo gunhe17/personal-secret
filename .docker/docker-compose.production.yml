@@ -8,12 +8,24 @@ services:
       dockerfile: .docker/Dockerfile.production.api
     restart: unless-stopped
     ports:
-      # loopback-only — secrets server must not be reachable off-host
       - "127.0.0.1:${PRODUCTION_API_PORT}:${PRODUCTION_API_CONTAINER_PORT}"
     depends_on:
       - database
     env_file:
       - ../.env/.env.production
+
+  worker:
+    build:
+      context: ..
+      dockerfile: .docker/Dockerfile.production.api
+    command: python -m personal_secret.api.bin.worker
+    restart: unless-stopped
+    depends_on:
+      - database
+    env_file:
+      - ../.env/.env.production
+    deploy:
+      replicas: ${PRODUCTION_WORKER_REPLICAS}
 
   database:
     container_name: personal-secret-production-database
