@@ -395,41 +395,37 @@ return {
 - 코드 라벨/섹션 마커: 영어 (`# factory`, `# query`)
 - 도메인 의미가 강한 docstring (MCP tool 설명 등): 한국어 허용
 
-### 라벨 뒤 한국어 부연 — why/계약/주의만, what 재서술 금지
+### 라벨 뒤 부연 — 라벨만 기본, 형태부터 금지
 
-인라인 라벨은 영어 한 단어(`# find`, `# event`). 라벨 뒤 한국어 부연은 코드가 드러내지 못하는 것 — 비자명한 의도(why)·입력 계약·주의(gotcha) — 일 때만 단다. 코드가 이미 보여주는 동작(what)을 한국어로 재서술하지 않는다.
+인라인 라벨은 영어 한 단어(`# find`, `# event`). 부연은 코드가 드러내지 못하는 것 — 비자명한 의도(why)·입력 계약·주의(gotcha) — 일 때만, 그리고 `# label (…)`/`# label — …` 형태가 **아니라** plain 한 줄(메서드 단계) 또는 트레일링 인라인(선언)으로. 코드가 이미 보여주는 동작(what)을 재서술하지 않는다.
 
-> **기본은 라벨만 — 괄호 부연을 적으려는 손을 멈춰라.** 대부분은 코드·시그니처·타입·docs가 이미 말하는 재서술이다. "어디에도 없는 why/계약/함정인가?"에 확실히 yes일 때만 남기고, 애매하면 지운다.
+> **기본은 라벨만 — 부연을 적으려는 손을 멈춰라.** 대부분은 코드·시그니처·타입·docs가 이미 말하는 재서술이다. "어디에도 없는 why/계약/함정인가?"에 확실히 yes일 때만, 그때도 라벨 부연이 아니라 plain 줄/트레일링으로.
 
-- 형식: `# label (짧은 한국어 단서)`. 부연은 *왜/계약/함정* 한 조각만.
-- 냄새 신호: `# label — A + B → C`처럼 코드 흐름을 나열하는 산문 체인. 코드를 읽으면 보이는 내용이라 가치 0 → 라벨만 남긴다.
-- 냄새 신호 (가장 흔함): `# label (호출/의존성이 하는 일 요약)`. 다음 줄이나 `Depends(...)`·메서드 호출이 *이미 하는 일*을 괄호로 풀어쓴 것 — 예: `# command (require_member 가 멤버십·team_id·RLS 확정)`. require_member 시그니처가 그걸 말하므로 괄호째 지우고 `# command` 만 남긴다. "엔드포인트 흐름 요약"·"이 usecase 단계 설명"은 거의 다 이 부류다.
-- 냄새 신호: `# label (… 없음/안 함/미전달)` — 부재·생략을 괄호로 설명. 인자를 안 넘긴 것·값이 비었음은 호출부에 이미 보인다. `# emit (미인증 — actor 없음)`은 "actor_id 를 안 넘김"의 재서술 → `# emit`. *왜* 부재인지(비자명한 보안/계약)가 코드·타입·docs 어디에도 없을 때만 한 조각, 아니면 라벨만.
-- 설계 근거는 docs에, 코드 주석에 복제하지 않는다. "왜 이 패턴/계약인가"(예: `raise 변형`, `update override 와 대칭`, `domain-local`)는 컨벤션 문서에 한 번 적고 메서드마다 반복하지 않는다. 패턴이 문서화된 컨벤션이면 메서드는 시그니처·코드로 자기설명(예: `get_*`/override의 `-> E` + `if None: raise`)되므로 주석 불필요.
-- 필드/변수 선언 주석은 기본 금지 — 의심되면 지운다. 선언 옆 주석은 거의 항상 (a) 타입이 이미 말하는 것(`int | None` = "nullable·적재 시 채워짐") 재서술이거나 (b) docs에 있는 설계 근거(`id/audit 같은 프레임워크 필드라 raw`) 복제다. 둘 다 삭제 — 타입은 타입이, "왜 이렇게 생겼나"는 reference 문서가 말한다. 선언에 진짜 *함정*(예: 특정 순서 의존)이 있을 때만 `# label (단서)` 한 조각.
+[check_label_comments.py](../../hooks/check_label_comments.py) 훅이 세 형태를 기계적으로 잡는다 — `# label (괄호)`, `# label — em-dash`, 선언(`name: type`) 바로 위 산문 주석. 살아남는 부연은 그 형태를 피해야 한다.
+
+- **메서드 단계 why/계약**: `# label (frag)`가 아니라 **plain 한 줄**로(`# 이메일/증명 어느쪽 오류인지 구분 노출 안 함`). 라벨은 라벨대로(`# find`).
+- **선언(field/var) 계약**: 별도 줄이 아니라 **트레일링 인라인**(`field: str  # 단서`). 단 도메인 VO로 매핑되는 필드는 의미가 VO·필드명에 있으니 **무주석**.
+- 냄새 신호 (가장 흔함): `# label (호출/의존성이 하는 일 요약)` — `Depends(...)`·메서드가 *이미 하는 일*을 푼 것. 시그니처가 말하므로 라벨만. "엔드포인트 흐름 요약"·"usecase 단계 설명"은 거의 다 이 부류.
+- 냄새 신호: `# label (… 없음/안 함/미전달)` — 부재·생략은 호출부에 이미 보인다. *왜* 부재인지가 어디에도 없을 때만, plain 줄로.
+- 설계 근거는 docs에, 코드 주석에 복제하지 않는다. 패턴이 문서화된 컨벤션이면 메서드는 시그니처·코드로 자기설명(예: `get_*`의 `-> E` + `if None: raise`)되므로 주석 불필요.
+- 필드/변수 선언 주석은 기본 금지 — 타입이 말하는 것(`int | None`) 재서술이거나 docs/VO 근거 복제다. 진짜 함정만 트레일링 인라인.
 
 ```python
-# good: 비자명한 계약/주의 — 단다
-# metadata (생략 필드는 기존값 보존 — None = 미변경)
-# emit (read 이벤트는 기록만 — 응답에 echo 안 함)
-# persist (load~update 사이 삭제 race → None)
+# good: 라벨만 — 단계는 라벨이 목차
+# find
+# emit
+# persist
 
-# bad: 코드 흐름 재서술(what) — 라벨만 남겨라
-# event(삭제) — soft-delete + 마커 한 덩어리 → 저장 + 응답   →   # event
+# bad: 괄호·em-dash 부연(what 재서술) → 라벨만 (훅이 잡음)
+# command (require_member 가 멤버십·team_id·RLS 확정)   →   # command
+# verify (login_proof 를 저장된 login_verifier 와 대조)   →   # verify
+# emit (미인증 — actor 없음)                              →   # emit
 
-# bad: 라벨 + 호출/의존성 요약 — 괄호째 지운다 (가장 흔한 잡음)
-# command (team 스코프 — require_member 가 멤버십·team_id·RLS 컨텍스트 확정)   →   # command
-# claim (sequence 순서 · FOR UPDATE SKIP LOCKED)                              →   # claim
-# verify (login_proof 를 저장된 login_verifier 와 대조)                        →   # verify
-# emit (미인증 — actor 없음)                                                  →   # emit
-# create team (생성자 = 인증된 account)                                       →   # create team
+# good: 살아남는 why = 라벨 부연이 아니라 plain 한 줄(코드에 안 보이는 보안/계약)
+# 이메일/증명 어느쪽 오류인지 구분 노출 안 함
 
-# good: 라벨 + 부연이 살아남는 경우 = 코드에 안 보이는 보안/계약/함정
-# find (이메일/증명 어느쪽 오류인지 구분 노출 안 함)        ← 보안 (왜 같은 에러)
-# value 는 클라가 team_key 로 암호화한 ciphertext         ← 계약 (input 이 평문 아님)
-
-# bad: 필드 선언 주석 = 타입 재서술 + docs 근거 복제 — 통째로 지운다
-sequence: int | None = None  # sequence 는 DB 발급 단조 커서 — id/audit 같은 프레임워크 필드(raw, 적재 시 채워짐)
-# good: 주석 없음 — 타입이 nullable을, reference 문서가 "왜 raw"를 말한다
-sequence: int | None = None
+# bad: 선언 위 산문 / 타입·VO 의미 복제 → 무주석 (타입·VO·docs 가 의미를 진다)
+# team_locked_key = 가입자가 봉인한 team_key
+team_locked_key: str                                     →   team_locked_key: str
+sequence: int | None = None  # DB 발급 단조 커서 …        →   sequence: int | None = None
 ```
