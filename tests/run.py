@@ -34,14 +34,14 @@ from personal_secret.api.domain.secret.ciphertext import Ciphertext
 from personal_secret.api.domain.setting.setting_repository import SettingRepository
 from personal_secret.api.domain.setting.key import Key
 from personal_secret.api.domain.setting.value import Value
-from personal_secret.api.domain.event.event_repository import EventRepository
+from personal_secret.api.domain.event.event.event_repository import EventRepository
 
 
 from personal_secret.api.domain.account.account_repository import AccountRepository
 from personal_secret.api.domain.team.team_repository import TeamRepository
-from personal_secret.api.domain.account_team.account_team_repository import AccountTeamRepository
-from personal_secret.api.domain.token.token_repository import TokenRepository
-from personal_secret.api.domain.token.fingerprint import Fingerprint
+from personal_secret.api.domain.team_access.team_access_repository import TeamAccessRepository
+from personal_secret.api.domain.account_token.account_token_repository import AccountTokenRepository
+from personal_secret.api.domain.account_token.fingerprint import Fingerprint
 from personal_secret.api.domain.common.exception import InvalidCredentialError
 
 from personal_secret.api.usecase import auth_register
@@ -53,7 +53,7 @@ from personal_secret.api.usecase import team_remove
 from personal_secret.api.usecase import team_rotate
 from personal_secret.api.usecase import account_get_only_public_key
 from personal_secret.api.usecase import secret_reveal
-from personal_secret.api.usecase import secret_list
+from personal_secret.api.usecase import secret_search
 
 from personal_secret.api.infrastructure.hash.sha256.client import sha256
 
@@ -339,26 +339,32 @@ async def setting_set_by_key_value_types(session):
 async def event_emit_stores_with_marker_id(session):
     secret = await SecretRepository.add(session=session, entity=make_secret(field="a"))
     event, _ = SecretEvent.created(secret=secret)
-    stored = await EventRepository.emit(session=session, events=[event])
+    group = uuid.uuid4()
+    stored = await EventRepository.emit(session=session, id=group, name="test", atomics=[event])
     assert len(stored) == 1
     e = stored[0]
     assert e.id == event.id()                      # identity는 마커가 확정
     assert e.act_entity_name.to_str() == "secret"
     assert e.act.to_str() == "created"
     assert e.act_entity_id == secret.id
-    assert e.act_group_id is not None              # emit이 묶음 키 생성
+    assert e.event_id == group                      # emit이 호출자 묶음(Event) id 스탬프
+    found = await EventRepository.find_by_id(session=session, id=group)
+    assert found.name.to_str() == "test"
 
 
 async def event_emit_multiple_shares_act_group(session):
     secret = await SecretRepository.add(session=session, entity=make_secret(field="a"))
+    group = uuid.uuid4()
     stored = await EventRepository.emit(
         session=session,
-        events=[SecretEvent.updated(secret=secret)[0], SecretEvent.deleted(secret=secret)[0]],
+        id=group,
+        name="test",
+        atomics=[SecretEvent.updated(secret=secret)[0], SecretEvent.deleted(secret=secret)[0]],
     )
     assert len(stored) == 2
     assert {s.act.to_str() for s in stored} == {"updated", "deleted"}
     assert {s.act_entity_name.to_str() for s in stored} == {"secret"}
-    assert stored[0].act_group_id == stored[1].act_group_id   # 같은 emit = 같은 묶음
+    assert stored[0].event_id == stored[1].event_id == group   # 같은 emit = 같은 Event
 
 
 # #
@@ -372,7 +378,9 @@ async def event_emit_stamps_actor_and_team(session):
     actor = uuid.uuid4()
     [event] = await EventRepository.emit(
         session=session,
-        events=[SecretEvent.created(secret=secret)[0]],
+        id=uuid.uuid4(),
+        name="test",
+        atomics=[SecretEvent.created(secret=secret)[0]],
         actor_id=actor,
         actor_team_id=secret.team_id,
     )
@@ -384,7 +392,12 @@ async def event_emit_stamps_actor_and_team(session):
 
 async def event_emit_global_has_no_actor_team(session):
     account = await AccountRepository.add_unique_by_email(session=session, entity=make_account())
-    [event] = await EventRepository.emit(session=session, events=[AccountEvent.created(account=account)[0]])
+    [event] = await EventRepository.emit(
+        session=session,
+        id=uuid.uuid4(),
+        name="test",
+        atomics=[AccountEvent.created(account=account)[0]],
+    )
     assert event.act_entity_name.to_str() == "account"
     assert event.actor_team_id is None               # global(RLS 밖) → None
     assert event.actor_id is None                    # 미전달 → None
@@ -393,13 +406,16 @@ async def event_emit_global_has_no_actor_team(session):
 async def secret_reveal_emits_read_event(session):
     secret = await SecretRepository.add(session=session, entity=make_secret(field="a"))
     actor = uuid.uuid4()
+    event_group_id = uuid.uuid4()
     await secret_reveal.reveal(
         session=session,
+        event_group_id=event_group_id,
         input=secret_reveal.Input(id=str(secret.id)),
         team_id=secret.team_id,
-        actor_id=actor,
+        account_id=actor,
     )
-    reads = [e for e in await EventRepository.list_all(session=session) if e.act.to_str() == "read"]
+    atomics = await EventRepository.filter_by_event_id(session=session, event_id=event_group_id)
+    reads = [e for e in atomics if e.act.to_str() == "read"]
     assert len(reads) == 1
     assert reads[0].act_entity_id == secret.id       # 어떤 시크릿을
     assert reads[0].actor_id == actor                # 누가 읽었나
@@ -411,16 +427,19 @@ async def secret_list_emits_read_per_result_sharing_act_group(session):
     actor = uuid.uuid4()
     for field in ["a", "b", "c"]:
         await SecretRepository.add(session=session, entity=make_secret(team_id=team, field=field))
-    listed = await secret_list.list_secrets(
+    event_group_id = uuid.uuid4()
+    listed = await secret_search.search(
         session=session,
-        input=secret_list.Input(),
+        event_group_id=event_group_id,
+        input=secret_search.Input(),
         team_id=team,
-        actor_id=actor,
+        account_id=actor,
     )
     assert len(listed.data) == 3
-    reads = [e for e in await EventRepository.list_all(session=session) if e.act.to_str() == "read"]
+    atomics = await EventRepository.filter_by_event_id(session=session, event_id=event_group_id)
+    reads = [e for e in atomics if e.act.to_str() == "read"]
     assert len(reads) == 3                              # 결과당 1건
-    assert len({e.act_group_id for e in reads}) == 1   # 같은 act_group 으로 묶임
+    assert len({e.event_id for e in reads}) == 1       # 같은 Event 로 묶임
     assert {e.actor_id for e in reads} == {actor}
     assert {e.actor_team_id for e in reads} == {team}
 
@@ -448,35 +467,36 @@ async def account_find_by_email(session):
 
 
 async def auth_register_creates_account(session):
-    result = await auth_register.register(session=session, input=_register_input())
+    result = await auth_register.register(session=session, event_group_id=uuid.uuid4(), input=_register_input())
     assert result.data["email"] == "me@example.com"
     # 검증값·키 평문은 응답에 없음
     assert "login_verifier" not in result.data and "login_proof" not in result.data
 
 
 async def auth_register_creates_personal_team(session):
-    result = await auth_register.register(session=session, input=_register_input())
+    result = await auth_register.register(session=session, event_group_id=uuid.uuid4(), input=_register_input())
     team_id = uuid.UUID(result.data["personal_team_id"])
     account = await AccountRepository.find_by_email(session=session, email=make_account().email)
-    membership = await AccountTeamRepository.find_by_account_and_team(
+    membership = await TeamAccessRepository.find_by_account_and_team(
         session=session, account_id=account.id, team_id=team_id,
     )
     assert membership is not None and membership.role.to_str() == "owner"
 
 
 async def auth_register_duplicate_email_raises(session):
-    await auth_register.register(session=session, input=_register_input(email="me@example.com"))
+    await auth_register.register(session=session, event_group_id=uuid.uuid4(), input=_register_input(email="me@example.com"))
     await expect_raises(
         AlreadyExistsError,
-        auth_register.register(session=session, input=_register_input(email="me@example.com")),
+        auth_register.register(session=session, event_group_id=uuid.uuid4(), input=_register_input(email="me@example.com")),
     )
 
 
 async def auth_login_issues_token_bound_to_account(session):
-    await auth_register.register(session=session, input=_register_input(login_proof="proof-xyz"))
+    await auth_register.register(session=session, event_group_id=uuid.uuid4(), input=_register_input(login_proof="proof-xyz"))
     account = await AccountRepository.find_by_email(session=session, email=make_account().email)
     result = await auth_login.login(
         session=session,
+        event_group_id=uuid.uuid4(),
         input=auth_login.Input(email="me@example.com", login_proof="proof-xyz"),
     )
     raw = result.data["token"]
@@ -484,31 +504,39 @@ async def auth_login_issues_token_bound_to_account(session):
     # 키 자료 동봉 (클라가 personal_key 복원용)
     assert result.data["personal_locked_key"] and result.data["personal_unlock_salt"]
     # 저장은 fingerprint, 토큰은 account 에 묶임
-    stored = await TokenRepository.find_by_fingerprint(session=session, fingerprint=Fingerprint.from_str(sha256.hash(value=raw)))
+    stored = await AccountTokenRepository.find_by_fingerprint(session=session, fingerprint=Fingerprint.from_str(sha256.hash(value=raw)))
     assert stored is not None and stored.account_id == account.id
 
 
 async def auth_login_wrong_proof_raises(session):
-    await auth_register.register(session=session, input=_register_input(login_proof="proof-xyz"))
+    await auth_register.register(session=session, event_group_id=uuid.uuid4(), input=_register_input(login_proof="proof-xyz"))
     await expect_raises(
         InvalidCredentialError,
-        auth_login.login(session=session, input=auth_login.Input(email="me@example.com", login_proof="wrong")),
+        auth_login.login(
+            session=session,
+            event_group_id=uuid.uuid4(),
+            input=auth_login.Input(email="me@example.com", login_proof="wrong"),
+        ),
     )
 
 
 async def auth_salts_returns_login_and_unlock_salt(session):
-    await auth_register.register(session=session, input=_register_input())
-    result = await auth_get_only_salts.get_only_salts(session=session, input=auth_get_only_salts.Input(email="me@example.com"))
+    await auth_register.register(session=session, event_group_id=uuid.uuid4(), input=_register_input())
+    result = await auth_get_only_salts.get_only_salts(
+        session=session,
+        event_group_id=uuid.uuid4(),
+        input=auth_get_only_salts.Input(email="me@example.com"),
+    )
     assert result.data["personal_unlock_salt"] and result.data["login_salt"]
 
 
 async def token_find_by_fingerprint_and_expiry(session):
     now = datetime.now(timezone.utc)
     account = await AccountRepository.add(session=session, entity=make_account())
-    live = await TokenRepository.add(session=session, entity=make_token(account_id=account.id, raw="abc"))
-    got = await TokenRepository.find_by_fingerprint(session=session, fingerprint=Fingerprint.from_str(sha256.hash(value="abc")))
+    live = await AccountTokenRepository.add(session=session, entity=make_token(account_id=account.id, raw="abc"))
+    got = await AccountTokenRepository.find_by_fingerprint(session=session, fingerprint=Fingerprint.from_str(sha256.hash(value="abc")))
     assert got.id == live.id and got.is_expired(now=now) is False
-    expired = await TokenRepository.add(
+    expired = await AccountTokenRepository.add(
         session=session,
         entity=make_token(account_id=account.id, raw="old", expires_at=now - timedelta(hours=1)),
     )
@@ -523,11 +551,12 @@ async def team_create_makes_team_and_owner_membership(session):
     b64 = base64.b64encode(b"team-locked-key").decode("ascii")
     result = await team_create.create(
         session=session,
+        event_group_id=uuid.uuid4(),
         input=team_create.Input(name="acme", team_locked_key=b64),
         account_id=account.id,
     )
     team_id = uuid.UUID(result.data["id"])
-    membership = await AccountTeamRepository.find_by_account_and_team(
+    membership = await TeamAccessRepository.find_by_account_and_team(
         session=session, account_id=account.id, team_id=team_id,
     )
     assert membership is not None and membership.role.to_str() == "owner"
@@ -536,12 +565,12 @@ async def team_create_makes_team_and_owner_membership(session):
 async def account_team_unique_per_account_and_team(session):
     account = await AccountRepository.add(session=session, entity=make_account())
     team = await TeamRepository.add(session=session, entity=make_team())
-    await AccountTeamRepository.add_unique_by_account_and_team(
+    await TeamAccessRepository.add_unique_by_account_and_team(
         session=session, entity=make_account_team(account_id=account.id, team_id=team.id),
     )
     await expect_raises(
         AlreadyExistsError,
-        AccountTeamRepository.add_unique_by_account_and_team(
+        TeamAccessRepository.add_unique_by_account_and_team(
             session=session, entity=make_account_team(account_id=account.id, team_id=team.id),
         ),
     )
@@ -551,9 +580,9 @@ async def account_team_filter_by_team(session):
     team = await TeamRepository.add(session=session, entity=make_team())
     a1 = await AccountRepository.add(session=session, entity=make_account(email="a@example.com"))
     a2 = await AccountRepository.add(session=session, entity=make_account(email="b@example.com"))
-    await AccountTeamRepository.add(session=session, entity=make_account_team(account_id=a1.id, team_id=team.id))
-    await AccountTeamRepository.add(session=session, entity=make_account_team(account_id=a2.id, team_id=team.id, role="member"))
-    members = await AccountTeamRepository.filter_by_team(session=session, team_id=team.id)
+    await TeamAccessRepository.add(session=session, entity=make_account_team(account_id=a1.id, team_id=team.id))
+    await TeamAccessRepository.add(session=session, entity=make_account_team(account_id=a2.id, team_id=team.id, role="member"))
+    members = await TeamAccessRepository.filter_by_team(session=session, team_id=team.id)
     assert {m.account_id for m in members} == {a1.id, a2.id}
 
 
@@ -562,7 +591,11 @@ async def account_team_filter_by_team(session):
 
 async def account_public_key_lookup(session):
     a = await AccountRepository.add(session=session, entity=make_account(email="me@example.com"))
-    result = await account_get_only_public_key.get_only_public_key(session=session, input=account_get_only_public_key.Input(email="me@example.com"))
+    result = await account_get_only_public_key.get_only_public_key(
+        session=session,
+        event_group_id=uuid.uuid4(),
+        input=account_get_only_public_key.Input(email="me@example.com"),
+    )
     assert result.data["account_id"] == str(a.id) and result.data["personal_lock"]
 
 
@@ -572,39 +605,51 @@ async def team_invite_adds_membership(session):
     sealed = base64.b64encode(b"team-key-sealed-for-bob").decode("ascii")
     await team_invite.invite(
         session=session,
+        event_group_id=uuid.uuid4(),
         input=team_invite.Input(account_id=str(invitee.id), role="member", team_locked_key=sealed),
         team_id=team.id,
     )
-    m = await AccountTeamRepository.find_by_account_and_team(session=session, account_id=invitee.id, team_id=team.id)
+    m = await TeamAccessRepository.find_by_account_and_team(session=session, account_id=invitee.id, team_id=team.id)
     assert m is not None and m.role.to_str() == "member"
 
 
 async def team_remove_deletes_membership(session):
     account = await AccountRepository.add(session=session, entity=make_account())
     team = await TeamRepository.add(session=session, entity=make_team())
-    await AccountTeamRepository.add(session=session, entity=make_account_team(account_id=account.id, team_id=team.id))
-    await team_remove.remove(session=session, input=team_remove.Input(account_id=str(account.id)), team_id=team.id)
-    assert await AccountTeamRepository.find_by_account_and_team(session=session, account_id=account.id, team_id=team.id) is None
+    await TeamAccessRepository.add(session=session, entity=make_account_team(account_id=account.id, team_id=team.id))
+    await team_remove.remove(
+        session=session,
+        event_group_id=uuid.uuid4(),
+        input=team_remove.Input(account_id=str(account.id)),
+        team_id=team.id,
+    )
+    assert await TeamAccessRepository.find_by_account_and_team(session=session, account_id=account.id, team_id=team.id) is None
 
 
 async def team_remove_missing_raises(session):
     team = await TeamRepository.add(session=session, entity=make_team())
     await expect_raises(
         NotFoundError,
-        team_remove.remove(session=session, input=team_remove.Input(account_id=str(uuid.uuid4())), team_id=team.id),
+        team_remove.remove(
+            session=session,
+            event_group_id=uuid.uuid4(),
+            input=team_remove.Input(account_id=str(uuid.uuid4())),
+            team_id=team.id,
+        ),
     )
 
 
 async def team_rotate_reencrypts_and_rekeys(session):
     account = await AccountRepository.add(session=session, entity=make_account())
     team = await TeamRepository.add(session=session, entity=make_team())
-    await AccountTeamRepository.add(session=session, entity=make_account_team(account_id=account.id, team_id=team.id))
+    await TeamAccessRepository.add(session=session, entity=make_account_team(account_id=account.id, team_id=team.id))
     secret = await SecretRepository.add(session=session, entity=make_secret(team_id=team.id, field="db", value=b"old"))
 
     new_value = base64.b64encode(b"new-ciphertext").decode("ascii")
     new_key = base64.b64encode(b"new-sealed-team-key").decode("ascii")
     result = await team_rotate.rotate(
         session=session,
+        event_group_id=uuid.uuid4(),
         input=team_rotate.Input(
             secrets={str(secret.id): new_value},
             members={str(account.id): new_key},
@@ -615,7 +660,7 @@ async def team_rotate_reencrypts_and_rekeys(session):
     # 시크릿 value 와 멤버 team_locked_key 가 새 값으로 교체됨
     reloaded = await SecretRepository.get_by_id(session=session, id=secret.id, team_id=team.id)
     assert reloaded.value.to_str() == new_value
-    m = await AccountTeamRepository.find_by_account_and_team(session=session, account_id=account.id, team_id=team.id)
+    m = await TeamAccessRepository.find_by_account_and_team(session=session, account_id=account.id, team_id=team.id)
     assert m.team_locked_key.to_str() == new_key
 
 
