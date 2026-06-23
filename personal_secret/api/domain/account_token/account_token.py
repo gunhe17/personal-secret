@@ -7,12 +7,12 @@ from dataclasses import dataclass
 from personal_secret.api.core.entity import Entity
 from personal_secret.api.core.validate import typecheck
 
-from personal_secret.api.domain.token.fingerprint import Fingerprint
-from personal_secret.api.domain.token.expires_at import ExpiresAt
+from personal_secret.api.domain.account_token.fingerprint import Fingerprint
+from personal_secret.api.domain.account_token.expires_at import ExpiresAt
 
 
 @dataclass(frozen=True, kw_only=True)
-class Token(Entity):
+class AccountToken(Entity):
     account_id: UUID
     fingerprint: Fingerprint
     expires_at: ExpiresAt
@@ -22,14 +22,14 @@ class Token(Entity):
 
     @classmethod
     @typecheck
-    def new(cls, *, account_id: UUID, fingerprint: Fingerprint, expires_at: ExpiresAt) -> "Token":
-        token = cls(
+    def new(cls, *, account_id: UUID, fingerprint: Fingerprint, expires_at: ExpiresAt) -> "AccountToken":
+        account_token = cls(
             account_id=account_id,
             fingerprint=fingerprint,
             expires_at=expires_at,
             by_factory=True,
         )
-        return token
+        return account_token
 
     # #
     # query

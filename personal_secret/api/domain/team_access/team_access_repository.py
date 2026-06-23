@@ -8,12 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from personal_secret.api.core.model import Model
+from personal_secret.api.core.validate import typecheck
 
-from personal_secret.api.domain.common.exception import AlreadyExistsError, NotFoundError
+from personal_secret.api.domain.common.exception import AlreadyExistsError, ForbiddenError, NotFoundError
 
-from personal_secret.api.domain.account_team.account_team import AccountTeam
-from personal_secret.api.domain.account_team.role import Role
-from personal_secret.api.domain.account_team.team_locked_key import TeamLockedKey
+from personal_secret.api.domain.team_access.team_access import TeamAccess
+from personal_secret.api.domain.team_access.role import Role
+from personal_secret.api.domain.team_access.team_locked_key import TeamLockedKey
 
 from personal_secret.api.infrastructure.database.postgresql.repository import PostgresRepository
 from personal_secret.api.infrastructure.database.common.exception import UniqueViolationError
@@ -22,8 +23,8 @@ from personal_secret.api.infrastructure.database.common.exception import UniqueV
 # #
 # model
 
-class AccountTeamModel(Model):
-    __tablename__ = "account_team"
+class TeamAccountModel(Model):
+    __tablename__ = "team_account"
 
     id: Mapped[UUID] = mapped_column(
         Uuid,
@@ -62,14 +63,14 @@ class AccountTeamModel(Model):
 
     __table_args__ = (
         Index(
-            "uq_account_team_active",
+            "uq_team_account_active",
             "account_id",
             "team_id",
             unique=True,
             postgresql_where=text("deleted_at IS NULL"),
         ),
         Index(
-            "ix_account_team_team",
+            "ix_team_account_team",
             "team_id",
             postgresql_where=text("deleted_at IS NULL"),
         ),
@@ -79,8 +80,8 @@ class AccountTeamModel(Model):
 # #
 # mapper
 
-def _to_account_team(model: AccountTeamModel) -> AccountTeam:
-    account_team = AccountTeam(
+def _to_team_access(model: TeamAccountModel) -> TeamAccess:
+    team_access = TeamAccess(
         id=model.id,
         account_id=model.account_id,
         team_id=model.team_id,
@@ -91,21 +92,22 @@ def _to_account_team(model: AccountTeamModel) -> AccountTeam:
         deleted_at=model.deleted_at,
         by_factory=True,
     )
-    return account_team
+    return team_access
 
 
 # #
 # repository
 
-class AccountTeamRepository(PostgresRepository[AccountTeam, AccountTeamModel]):
-    model = AccountTeamModel
-    mapper = _to_account_team
+class TeamAccessRepository(PostgresRepository[TeamAccess, TeamAccountModel]):
+    model = TeamAccountModel
+    mapper = _to_team_access
 
     # #
     # create
 
     @classmethod
-    async def add_unique_by_account_and_team(cls, *, session: AsyncSession, entity: AccountTeam) -> AccountTeam:
+    @typecheck
+    async def add_unique_by_account_and_team(cls, *, session: AsyncSession, entity: TeamAccess) -> TeamAccess:
         try:
             await cls._ensure_unique(
                 session=session,
@@ -113,67 +115,93 @@ class AccountTeamRepository(PostgresRepository[AccountTeam, AccountTeamModel]):
                 unique=[("account_id", "team_id")],
             )
         except UniqueViolationError:
-            raise AlreadyExistsError("AccountTeam", f"{entity.account_id}/{entity.team_id}")
+            raise AlreadyExistsError("TeamAccess", f"{entity.account_id}/{entity.team_id}")
         return await cls.add(session=session, entity=entity)
 
     # #
     # read
 
     @classmethod
+    @typecheck
     async def find_by_account_and_team(
         cls,
         *,
         session: AsyncSession,
         account_id: UUID,
         team_id: UUID,
-    ) -> AccountTeam | None:
+    ) -> TeamAccess | None:
         return await cls._find(
             session=session,
             where=[
-                AccountTeamModel.account_id == account_id,
-                AccountTeamModel.team_id == team_id,
+                TeamAccountModel.account_id == account_id,
+                TeamAccountModel.team_id == team_id,
             ],
         )
 
     @classmethod
+    @typecheck
     async def get_by_account_and_team(
         cls,
         *,
         session: AsyncSession,
         account_id: UUID,
         team_id: UUID,
-    ) -> AccountTeam:
-        membership = await cls.find_by_account_and_team(
+    ) -> TeamAccess:
+        team_access = await cls.find_by_account_and_team(
             session=session,
             account_id=account_id,
             team_id=team_id,
         )
-        if membership is None:
-            raise NotFoundError("AccountTeam", f"{account_id}/{team_id}")
-        return membership
+        if team_access is None:
+            raise NotFoundError("TeamAccess", f"{account_id}/{team_id}")
+        return team_access
 
     @classmethod
-    async def filter_by_team(cls, *, session: AsyncSession, team_id: UUID) -> list[AccountTeam]:
+    @typecheck
+    async def get_valid_by_account_and_team(
+        cls,
+        *,
+        session: AsyncSession,
+        account_id: UUID,
+        team_id: UUID,
+    ) -> TeamAccess:
+        team_access = await cls.find_by_account_and_team(
+            session=session,
+            account_id=account_id,
+            team_id=team_id,
+        )
+        if team_access is None:
+            raise ForbiddenError("Team")
+        return team_access
+
+    @classmethod
+    @typecheck
+    async def filter_by_team(cls, *, session: AsyncSession, team_id: UUID) -> list[TeamAccess]:
         return await cls._filter_by(session=session, column="team_id", value=team_id)
 
     @classmethod
-    async def filter_by_account(cls, *, session: AsyncSession, account_id: UUID) -> list[AccountTeam]:
+    @typecheck
+    async def filter_by_account(cls, *, session: AsyncSession, account_id: UUID) -> list[TeamAccess]:
         return await cls._filter_by(session=session, column="account_id", value=account_id)
 
     # #
     # delete
 
     @classmethod
+    @typecheck
     async def remove_by_account_and_team(
         cls,
         *,
         session: AsyncSession,
         account_id: UUID,
         team_id: UUID,
-    ) -> AccountTeam:
-        membership = await cls.get_by_account_and_team(
+    ) -> TeamAccess:
+        team_access = await cls.get_by_account_and_team(
             session=session,
             account_id=account_id,
             team_id=team_id,
         )
-        return await cls.remove_by_id(session=session, id=membership.id)
+        removed = await cls.remove_by_id(session=session, id=team_access.id)
+        if removed is None:
+            raise NotFoundError("TeamAccess", f"{account_id}/{team_id}")
+        return removed

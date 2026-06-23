@@ -32,7 +32,7 @@ class TeamEvent(Event):
     @classmethod
     @typecheck
     def rotated(cls, *, team_id: UUID) -> tuple["TeamEvent", UUID]:
-        # rotate 는 Team 엔티티가 없어 두 번째 원소는 team_id (그 외 팩토리는 entity)
+        # rotate 는 Team 엔티티가 없어 두 번째 원소는 team_id, 그 외 팩토리는 entity 반환
         return cls(_kind=TeamEventKind.ROTATED, _act_entity_id=team_id), team_id
 
     # #

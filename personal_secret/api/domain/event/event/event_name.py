@@ -7,24 +7,21 @@ from personal_secret.api.domain.common.exception import InvalidError, InvalidFor
 
 
 @dataclass(frozen=True, kw_only=True)
-class EntityName(ValueObject):
+class EventName(ValueObject):
     _value: str
-
-    # hint
-    _allowed_list: tuple[str, ...] = ("secret", "team", "account_team", "account", "token", "setting")
 
     # #
     # factory
 
     @classmethod
-    def from_str(cls, value) -> "EntityName":
+    def from_str(cls, value) -> "EventName":
         # type
         if not isinstance(value, str):
-            raise InvalidError("EntityName")
+            raise InvalidError("EventName")
 
         # format
-        if value not in cls._allowed_list:
-            raise InvalidFormatError("EntityName")
+        if not value.strip():
+            raise InvalidFormatError("EventName")
 
         return cls(_value=value, by_factory=True)
 

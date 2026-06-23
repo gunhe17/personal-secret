@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 from personal_secret.api.core.value_object import ValueObject
@@ -8,25 +7,24 @@ from personal_secret.api.domain.common.exception import InvalidError, InvalidFor
 
 
 @dataclass(frozen=True, kw_only=True)
-class Fingerprint(ValueObject):
-    # 불투명 토큰의 sha256 hex — 원본 토큰은 저장하지 않는다
+class EntityName(ValueObject):
     _value: str
 
     # hint
-    _pattern: str = r"^[0-9a-f]{64}$"
+    _allowed_list: tuple[str, ...] = ("secret", "team", "team_access", "account", "account_token", "setting")
 
     # #
     # factory
 
     @classmethod
-    def from_str(cls, value) -> "Fingerprint":
+    def from_str(cls, value) -> "EntityName":
         # type
         if not isinstance(value, str):
-            raise InvalidError("Fingerprint")
+            raise InvalidError("EntityName")
 
         # format
-        if not re.match(cls._pattern, value):
-            raise InvalidFormatError("Fingerprint")
+        if value not in cls._allowed_list:
+            raise InvalidFormatError("EntityName")
 
         return cls(_value=value, by_factory=True)
 

@@ -19,7 +19,8 @@ class Payload(ValueObject):
         if not isinstance(value, dict):
             raise InvalidError("Payload")
 
-        # normalize (방어적 복사 — raw dict는 unhashable → frozen 불변성 보존)
+        # normalize
+        # raw dict 는 unhashable 이라 frozen 불변성을 깨므로 방어적으로 복사한다
         items = tuple(sorted(value.items(), key=lambda kv: str(kv[0])))
         return cls(_items=items, by_factory=True)
 

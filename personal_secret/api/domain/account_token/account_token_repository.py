@@ -8,10 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from personal_secret.api.core.model import Model
+from personal_secret.api.core.validate import typecheck
 
-from personal_secret.api.domain.token.token import Token
-from personal_secret.api.domain.token.fingerprint import Fingerprint
-from personal_secret.api.domain.token.expires_at import ExpiresAt
+from personal_secret.api.domain.common.exception import UnauthorizedError
+
+from personal_secret.api.domain.account_token.account_token import AccountToken
+from personal_secret.api.domain.account_token.fingerprint import Fingerprint
+from personal_secret.api.domain.account_token.expires_at import ExpiresAt
 
 from personal_secret.api.infrastructure.database.postgresql.repository import PostgresRepository
 
@@ -19,8 +22,8 @@ from personal_secret.api.infrastructure.database.postgresql.repository import Po
 # #
 # model
 
-class TokenModel(Model):
-    __tablename__ = "tokens"
+class AccountTokenModel(Model):
+    __tablename__ = "account_tokens"
 
     id: Mapped[UUID] = mapped_column(
         Uuid,
@@ -55,7 +58,7 @@ class TokenModel(Model):
 
     __table_args__ = (
         Index(
-            "uq_tokens_fingerprint_active",
+            "uq_account_tokens_fingerprint_active",
             "fingerprint",
             unique=True,
             postgresql_where=text("deleted_at IS NULL"),
@@ -66,8 +69,8 @@ class TokenModel(Model):
 # #
 # mapper
 
-def _to_token(model: TokenModel) -> Token:
-    token = Token(
+def _to_account_token(model: AccountTokenModel) -> AccountToken:
+    account_token = AccountToken(
         id=model.id,
         account_id=model.account_id,
         fingerprint=Fingerprint.from_str(model.fingerprint),
@@ -77,29 +80,45 @@ def _to_token(model: TokenModel) -> Token:
         deleted_at=model.deleted_at,
         by_factory=True,
     )
-    return token
+    return account_token
 
 
 # #
 # repository
 
-class TokenRepository(PostgresRepository[Token, TokenModel]):
-    model = TokenModel
-    mapper = _to_token
+class AccountTokenRepository(PostgresRepository[AccountToken, AccountTokenModel]):
+    model = AccountTokenModel
+    mapper = _to_account_token
 
     # #
     # read
 
     @classmethod
-    async def find_by_fingerprint(cls, *, session: AsyncSession, fingerprint: Fingerprint) -> Token | None:
+    @typecheck
+    async def find_by_fingerprint(cls, *, session: AsyncSession, fingerprint: Fingerprint) -> AccountToken | None:
         return await cls._find_by(session=session, column="fingerprint", value=fingerprint.to_str())
+
+    @classmethod
+    @typecheck
+    async def get_valid_by_fingerprint(cls, *, session: AsyncSession, fingerprint: Fingerprint) -> AccountToken:
+        found = await cls._find(
+            session=session,
+            where=[
+                AccountTokenModel.fingerprint == fingerprint.to_str(),
+                AccountTokenModel.expires_at > func.now(),
+            ],
+        )
+        if found is None:
+            raise UnauthorizedError()
+        return found
 
     # #
     # delete
 
     @classmethod
-    async def remove_by_fingerprint(cls, *, session: AsyncSession, fingerprint: Fingerprint) -> Token | None:
-        token = await cls.find_by_fingerprint(session=session, fingerprint=fingerprint)
-        if token is None:
+    @typecheck
+    async def remove_by_fingerprint(cls, *, session: AsyncSession, fingerprint: Fingerprint) -> AccountToken | None:
+        account_token = await cls.find_by_fingerprint(session=session, fingerprint=fingerprint)
+        if account_token is None:
             return None
-        return await cls.remove_by_id(session=session, id=token.id)
+        return await cls.remove_by_id(session=session, id=account_token.id)

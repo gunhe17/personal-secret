@@ -4,9 +4,13 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import DateTime, String, Uuid, func
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from personal_secret.api.core.model import Model
+from personal_secret.api.core.validate import typecheck
+
+from personal_secret.api.domain.common.exception import NotFoundError
 
 from personal_secret.api.domain.team.team import Team
 from personal_secret.api.domain.team.team_name import TeamName
@@ -65,3 +69,14 @@ def _to_team(model: TeamModel) -> Team:
 class TeamRepository(PostgresRepository[Team, TeamModel]):
     model = TeamModel
     mapper = _to_team
+
+    # #
+    # read
+
+    @classmethod
+    @typecheck
+    async def get_by_id(cls, *, session: AsyncSession, id: UUID) -> Team:
+        team = await cls.find_by_id(session=session, id=id)
+        if team is None:
+            raise NotFoundError("Team", str(id))
+        return team

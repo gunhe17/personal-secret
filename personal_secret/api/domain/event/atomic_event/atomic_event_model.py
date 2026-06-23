@@ -1,28 +1,25 @@
 from __future__ import annotations
 
 from datetime import datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sqlalchemy import BigInteger, DateTime, Identity, String, Uuid, func
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from personal_secret.api.core.model import Model
 
-from personal_secret.api.domain.event.event import Event
-from personal_secret.api.domain.event.act import Act
-from personal_secret.api.domain.event.entity_name import EntityName
-from personal_secret.api.domain.event.payload import Payload
-
-from personal_secret.api.infrastructure.database.postgresql.repository import PostgresRepository
+from personal_secret.api.domain.event.atomic_event.atomic_event import AtomicEvent
+from personal_secret.api.domain.event.atomic_event.act import Act
+from personal_secret.api.domain.event.atomic_event.entity_name import EntityName
+from personal_secret.api.domain.event.atomic_event.payload import Payload
 
 
 # #
 # model
 
-class EventModel(Model):
-    __tablename__ = "events"
+class AtomicEventModel(Model):
+    __tablename__ = "atomic_events"
 
     id: Mapped[UUID] = mapped_column(
         Uuid,
@@ -34,7 +31,7 @@ class EventModel(Model):
         nullable=False,
         unique=True,
     )
-    act_group_id: Mapped[UUID] = mapped_column(
+    event_id: Mapped[UUID] = mapped_column(
         Uuid,
         nullable=False,
     )
@@ -81,11 +78,11 @@ class EventModel(Model):
 # #
 # mapper
 
-def _to_event(model: EventModel) -> Event:
-    event = Event(
+def _to_atomic_event(model: AtomicEventModel) -> AtomicEvent:
+    atomic_event = AtomicEvent(
         id=model.id,
         sequence=model.sequence,
-        act_group_id=model.act_group_id,
+        event_id=model.event_id,
         actor_id=model.actor_id,
         actor_team_id=model.actor_team_id,
         act=Act.from_str(model.act),
@@ -97,43 +94,7 @@ def _to_event(model: EventModel) -> Event:
         deleted_at=model.deleted_at,
         by_factory=True,
     )
-    return event
+    return atomic_event
 
 
-# #
-# repository
-
-class EventRepository(PostgresRepository[Event, EventModel]):
-    model = EventModel
-    mapper = _to_event
-
-    # #
-    # create
-
-    @classmethod
-    async def emit(
-        cls,
-        *,
-        session: AsyncSession,
-        events: list,
-        actor_id: UUID | None = None,
-        actor_team_id: UUID | None = None,
-    ) -> list[Event]:
-        # act_group_id — 한 emit(=한 액션)의 이벤트들을 묶는 키
-        act_group_id = uuid4()
-        return await cls.add_many(
-            session=session,
-            entities=[
-                Event.new(
-                    id=event.id(),
-                    act=Act.from_str(event.act()),
-                    act_entity_name=EntityName.from_str(event.act_entity_name()),
-                    act_entity_id=event.act_entity_id(),
-                    payload=Payload.from_dict(event.payload()),
-                    act_group_id=act_group_id,
-                    actor_id=actor_id,
-                    actor_team_id=actor_team_id,
-                )
-                for event in events
-            ],
-        )
+# repository 는 aggregate root EventRepository 에 있다

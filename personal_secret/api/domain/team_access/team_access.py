@@ -6,12 +6,12 @@ from dataclasses import dataclass, replace
 from personal_secret.api.core.entity import Entity
 from personal_secret.api.core.validate import typecheck
 
-from personal_secret.api.domain.account_team.role import Role
-from personal_secret.api.domain.account_team.team_locked_key import TeamLockedKey
+from personal_secret.api.domain.team_access.role import Role
+from personal_secret.api.domain.team_access.team_locked_key import TeamLockedKey
 
 
 @dataclass(frozen=True, kw_only=True)
-class AccountTeam(Entity):
+class TeamAccess(Entity):
     account_id: UUID
     team_id: UUID
     role: Role
@@ -29,20 +29,20 @@ class AccountTeam(Entity):
         team_id: UUID,
         role: Role,
         team_locked_key: TeamLockedKey,
-    ) -> "AccountTeam":
-        account_team = cls(
+    ) -> "TeamAccess":
+        team_access = cls(
             account_id=account_id,
             team_id=team_id,
             role=role,
             team_locked_key=team_locked_key,
             by_factory=True,
         )
-        return account_team
+        return team_access
 
     # #
     # update
 
-    def with_team_locked_key(self, team_locked_key: TeamLockedKey) -> "AccountTeam":
+    def with_team_locked_key(self, team_locked_key: TeamLockedKey) -> "TeamAccess":
         return replace(self, team_locked_key=team_locked_key, by_factory=True)
 
     # #

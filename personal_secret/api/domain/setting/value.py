@@ -8,8 +8,7 @@ from personal_secret.api.domain.common.exception import InvalidError, InvalidFor
 
 @dataclass(frozen=True, kw_only=True)
 class Value(ValueObject):
-    # scalar(str/int/float/bool) 또는 list — dict/None 등 중첩 구조는 불가
-    _value: str | int | float | bool | tuple
+    _value: str | int | float | bool | tuple  # dict/None 등 중첩 구조는 불가
 
     # hint
     _scalar_types: tuple = (str, int, float, bool)
@@ -19,11 +18,12 @@ class Value(ValueObject):
 
     @classmethod
     def from_json(cls, value) -> "Value":
-        # type — scalar 는 그대로
+        # type
         if isinstance(value, cls._scalar_types):
             return cls(_value=value, by_factory=True)
 
-        # format — list 는 scalar 원소만 (중첩 거부), 불변성 위해 tuple 보관
+        # format
+        # list 원소는 scalar 만 허용, 불변성 위해 tuple 로 보관
         if isinstance(value, list):
             for item in value:
                 if not isinstance(item, cls._scalar_types):
