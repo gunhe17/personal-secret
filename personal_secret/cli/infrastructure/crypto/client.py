@@ -11,8 +11,10 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 
 
 # #
-# crypto (클라 측 E2EE — 서버는 이 결과의 평문을 절대 못 봄)
-# Argon2 파라미터는 고정값 — signup/login 간, 그리고 모든 클라 간 일관돼야 함
+# crypto
+
+# 클라 측 E2EE 경계라 서버는 이 결과의 평문을 절대 못 본다
+# Argon2 파라미터는 signup/login 간, 모든 클라 간 일관돼야 해서 고정값이다
 
 class Crypto:
     _ARGON2_TIME = 3
@@ -23,14 +25,14 @@ class Crypto:
     _NONCE_LEN = 12
 
     # #
-    # key derivation (비번 + salt → 키)
+    # key derivation
 
     def derive_unlock_key(self, *, password: str, salt: bytes) -> bytes:
-        # personal_unlock_key — personal_key 를 여닫는 게이트
+        # 반환값 = personal_unlock_key, personal_key 를 여닫는 게이트
         return self._argon2(password=password, salt=salt)
 
     def derive_login_proof(self, *, password: str, salt: bytes) -> bytes:
-        # login_proof — 서버로 보낼 로그인 증명 (다른 salt 라 unlock_key 와 무관)
+        # 반환값 = login_proof, 서버로 보낼 로그인 증명. salt 가 달라 unlock_key 와는 무관
         return self._argon2(password=password, salt=salt)
 
     def _argon2(self, *, password: str, salt: bytes) -> bytes:
@@ -54,8 +56,9 @@ class Crypto:
         return os.urandom(self._KEY_LEN)
 
     # #
-    # keypair (X25519 — personal_lock / personal_key)
+    # keypair
 
+    # keypair 는 X25519. public 은 personal_lock, private 은 personal_key 로 쓰인다
     def generate_keypair(self) -> tuple[bytes, bytes]:
         private = X25519PrivateKey.generate()
         private_raw = private.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())
@@ -63,8 +66,9 @@ class Crypto:
         return private_raw, public_raw
 
     # #
-    # symmetric (AES-256-GCM, nonce‖ct) — personal_key 잠금·value 암호화
+    # symmetric
 
+    # AES-256-GCM, nonce‖ct 형식. personal_key 잠금과 value 암호화에 쓴다
     def encrypt(self, *, key: bytes, plaintext: bytes) -> bytes:
         nonce = os.urandom(self._NONCE_LEN)
         return nonce + AESGCM(key).encrypt(nonce, plaintext, None)
@@ -73,8 +77,10 @@ class Crypto:
         return AESGCM(key).decrypt(blob[: self._NONCE_LEN], blob[self._NONCE_LEN :], None)
 
     # #
-    # anonymous seal (공개키로 봉인 → 개인키로만 개봉) — team_key 전달
-    # 포맷: eph_pub(32) ‖ nonce(12) ‖ ct. libsodium sealed box 동등(HKDF-SHA256)
+    # anonymous seal
+
+    # 공개키로 봉인하고 개인키로만 개봉하는 방식으로 team_key 전달에 쓴다
+    # 포맷은 eph_pub 32바이트, nonce 12바이트, ct 순. libsodium sealed box 와 동등하고 HKDF-SHA256 사용
 
     def seal(self, *, recipient_public: bytes, plaintext: bytes) -> bytes:
         ephemeral = X25519PrivateKey.generate()

@@ -12,7 +12,7 @@ from pathlib import Path
 # #
 # tool
 
-# 레이어 rank — 높을수록 상위. 상위는 하위만 import 가능, core(0)는 누구나. — api.md [INV-1]
+# 레이어 rank. 높을수록 상위, 상위는 하위만 import 가능하고 core(0)는 누구나 가능하다. api.md [INV-1] 참고
 RANK = {
     "bin": 6,
     "server": 5,
@@ -24,8 +24,7 @@ RANK = {
 }
 PREFIX = "personal_secret.api."
 
-# metadata 등록 예외 — bare `import personal_secret.api.domain`(side-effect, # noqa: F401)는
-# 모든 Model 을 Base.metadata 에 올리는 SQLAlchemy idiom. 도메인 로직 의존이 아니라 위반 아님. — api.md [INV-1]
+# `import personal_secret.api.domain` 은 SQLAlchemy 가 모든 Model 을 Base.metadata 에 올리도록 하는 idiom. 도메인 로직 의존이 아니라 위반도 아니다. api.md [INV-1] 참고
 REGISTRATION_IMPORT = "personal_secret.api.domain"
 
 
