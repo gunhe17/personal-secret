@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from personal_secret.api.core.usecase import In
 from personal_secret.api.core.usecase import Out
@@ -13,13 +13,13 @@ from personal_secret.api.domain.team.team_name import TeamName
 from personal_secret.api.domain.team.team_repository import TeamRepository
 from personal_secret.api.domain.team.team_event import TeamEvent
 
-from personal_secret.api.domain.event.event_repository import EventRepository
+from personal_secret.api.domain.event.event.event_repository import EventRepository
 
-from personal_secret.api.domain.account_team.account_team import AccountTeam
-from personal_secret.api.domain.account_team.role import Role
-from personal_secret.api.domain.account_team.team_locked_key import TeamLockedKey
-from personal_secret.api.domain.account_team.account_team_repository import AccountTeamRepository
-from personal_secret.api.domain.account_team.account_team_event import AccountTeamEvent
+from personal_secret.api.domain.team_access.team_access import TeamAccess
+from personal_secret.api.domain.team_access.role import Role
+from personal_secret.api.domain.team_access.team_locked_key import TeamLockedKey
+from personal_secret.api.domain.team_access.team_access_repository import TeamAccessRepository
+from personal_secret.api.domain.team_access.team_access_event import TeamAccessEvent
 
 from personal_secret.api.infrastructure.database.postgresql.client import db_client
 from personal_secret.api.infrastructure.database.common.session import transactional_session
@@ -30,7 +30,6 @@ from personal_secret.api.infrastructure.database.common.session import transacti
 
 class Input(In):
     name: str
-    # team_locked_key = 클라가 만든 team_key 를 자기 personal_lock 으로 봉인한 것
     team_locked_key: str
 
 
@@ -45,7 +44,7 @@ class Output(Out):
 # usecase
 
 @typecheck
-async def create(*, session, input: Input, account_id: UUID) -> Output:
+async def create(*, session, event_group_id, input: Input, account_id: UUID) -> Output:
     # create team
     team_event, team = TeamEvent.created(
         team=await TeamRepository.add(
@@ -56,11 +55,11 @@ async def create(*, session, input: Input, account_id: UUID) -> Output:
         ),
     )
 
-    # owner membership
-    member_event, _ = AccountTeamEvent.created(
-        membership=await AccountTeamRepository.add_unique_by_account_and_team(
+    # owner team access
+    member_event, _ = TeamAccessEvent.created(
+        team_access=await TeamAccessRepository.add_unique_by_account_and_team(
             session=session,
-            entity=AccountTeam.new(
+            entity=TeamAccess.new(
                 account_id=account_id,
                 team_id=team.id,
                 role=Role.owner(),
@@ -70,14 +69,16 @@ async def create(*, session, input: Input, account_id: UUID) -> Output:
     )
 
     # return
-    return Output.new(
+    return Output(
         data=team.to_dict(),
         event=[
             event.to_dict()
             for event in (
                 await EventRepository.emit(
                     session=session,
-                    events=[team_event, member_event],
+                    id=event_group_id,
+                    name="team_create",
+                    atomics=[team_event, member_event],
                     actor_id=account_id,
                 )
             )
@@ -101,6 +102,7 @@ async def _main():
         print(
             await create(
                 session=session,
+                event_group_id=uuid4(),
                 input=Input(name=args.name, team_locked_key=args.team_locked_key),
                 account_id=UUID(args.account_id),
             )

@@ -18,7 +18,8 @@ def login(args: argparse.Namespace) -> None:
 
 
 def add(args: argparse.Namespace) -> None:
-    # value — inline --value, or hidden prompt (bare keys stay off the shell history)
+    # value
+    # hidden prompt avoids leaving bare keys in shell history
     value = args.value if args.value is not None else getpass.getpass(f"{args.field}: ")
     created = api.create(
         domain=args.domain,
@@ -39,18 +40,19 @@ def get(args: argparse.Namespace) -> None:
     revealed = api.reveal(id=args.id)
     value = revealed.get("value", "")
 
-    # copy — straight to the clipboard, nothing printed
+    # copy
     if args.copy:
         _pbcopy(value)
         print("✓ copied value to clipboard")
         return
 
-    # json — raw dump
+    # json
     if args.json:
         print(json.dumps(revealed, ensure_ascii=False, indent=2))
         return
 
-    # default — print the value (this is a local terminal, the point is to read it)
+    # default
+    # this is a local terminal, so printing the plaintext value is the point
     print(f"{revealed['domain']}/{revealed['service']}/{revealed['project']}/{revealed['field']}")
     print(f"  {value}")
 

@@ -5,7 +5,6 @@ from personal_secret.api.server.server import personal_secret_api
 from personal_secret.api.server import middleware
 from personal_secret.api.server.router import Router
 from personal_secret.api.endpoint import system
-from personal_secret.api.endpoint import command
 from personal_secret.api.endpoint import secret
 from personal_secret.api.endpoint import auth
 from personal_secret.api.endpoint import team
@@ -30,12 +29,12 @@ server.router(
     Router(path="/system/health", methods=["GET"], endpoint=system.health)
 )
 server.router(
-    Router(path="/system/schema", methods=["GET"], endpoint=system.schema)
+    Router(path="/system/map", methods=["GET"], endpoint=system.map)
 )
 
 # view
 server.router(
-    Router(path="/schema", methods=["GET"], endpoint=system.page_schema)
+    Router(path="/map", methods=["GET"], endpoint=system.page_map)
 )
 
 # auth

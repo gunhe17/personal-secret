@@ -35,6 +35,20 @@ services:
     env_file:
       - ../.env/.env.develop
 
+  worker:
+    build:
+      context: ..
+      dockerfile: .docker/Dockerfile.develop.api
+    command: python -m personal_secret.api.bin.worker
+    volumes:
+      - ..:/app:ro
+    depends_on:
+      - database
+    env_file:
+      - ../.env/.env.develop
+    deploy:
+      replicas: ${DEVELOP_WORKER_REPLICAS}
+
   mcp:
     container_name: personal-secret-develop-mcp
     build:

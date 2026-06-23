@@ -8,8 +8,7 @@ from personal_secret.api.domain.common.exception import InvalidError, InvalidFor
 
 @dataclass(frozen=True, kw_only=True)
 class LoginVerifier(ValueObject):
-    # login_proof 를 서버가 한 번 더 해싱한 검증 대상값 (argon2 PHC). 클라엔 안 나감
-    _value: str
+    _value: str  # argon2 PHC, 클라엔 안 나감
 
     # #
     # factory

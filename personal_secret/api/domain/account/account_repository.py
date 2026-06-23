@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from personal_secret.api.core.model import Model
+from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.common.exception import AlreadyExistsError, InvalidCredentialError, NotFoundError
 
@@ -113,6 +114,7 @@ class AccountRepository(PostgresRepository[Account, AccountModel]):
     # create
 
     @classmethod
+    @typecheck
     async def add_unique_by_email(cls, *, session: AsyncSession, entity: Account) -> Account:
         try:
             await cls._ensure_unique(session=session, entity=entity, unique=["email"])
@@ -124,10 +126,12 @@ class AccountRepository(PostgresRepository[Account, AccountModel]):
     # read
 
     @classmethod
+    @typecheck
     async def find_by_email(cls, *, session: AsyncSession, email: Email) -> Account | None:
         return await cls._find_by(session=session, column="email", value=email.to_str())
 
     @classmethod
+    @typecheck
     async def get_by_email(cls, *, session: AsyncSession, email: Email) -> Account:
         account = await cls.find_by_email(session=session, email=email)
         if account is None:
@@ -135,6 +139,15 @@ class AccountRepository(PostgresRepository[Account, AccountModel]):
         return account
 
     @classmethod
+    @typecheck
+    async def get_by_id(cls, *, session: AsyncSession, id: UUID) -> Account:
+        account = await cls.find_by_id(session=session, id=id)
+        if account is None:
+            raise NotFoundError("Account", str(id))
+        return account
+
+    @classmethod
+    @typecheck
     async def verify_email(cls, *, session: AsyncSession, email: Email) -> Account:
         # 부재 = InvalidCredentialError (NotFound 아님) — 로그인이 이메일 존재 여부 노출 안 하게
         account = await cls.find_by_email(session=session, email=email)

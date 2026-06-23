@@ -16,7 +16,8 @@ paths:
 | 섹션 | 핵심 규칙 |
 |------|----------|
 | 구조 | `core/exception.py` 루트(2분류) → 레이어 `common/exception.py` 구체 예외 — [INV-4] |
-| 메시지 규약 | head + `message` + `path` 3단, base가 에러명·범주·위치 자동 조립 |
+| 메시지 규약 | 구체 예외는 catalog `key`+`params`, base가 `core/i18n.py`로 렌더 + head·범주·위치 자동 조립 |
+| 다국어 | catalog 단일 출처(`core/i18n.py`), 생성은 `DEFAULT`(ko), 응답은 `Accept-Language` 재렌더 |
 | 4xx vs 5xx | `ClientError` 사용자 노출·정중체 / `DevelopError` prod 마스킹·terse 진단 |
 | 핸들러 | `client()`(4xx) + `internal()`(catch-all 5xx) 2개로 완결, MRO 자동 분기 |
 
@@ -43,12 +44,15 @@ infrastructure/common/exception.py
   InfrastructureClientError(ClientError)   레이어 베이스 (4xx) — 구체 예외는 어댑터 옆(아래)
 
 infrastructure/database/common/exception.py     (어댑터-일반 typed 예외)
-  DatabaseError(InfrastructureDevelopError)        500 · transactional_session 경계
+  DatabaseError(InfrastructureDevelopError)        500 · transactional_session 경계(SQLAlchemy)
+  ListenError(InfrastructureDevelopError)          500 · asyncpg LISTEN 연결/구독 경계
   UniqueViolationError(InfrastructureClientError)  409 · _ensure_unique 사전검사
 infrastructure/hash/common/exception.py  (어댑터 고유 typed 예외)
   HashError(InfrastructureDevelopError)    어댑터 베이스 (5xx)
   ├─ VerifyError                         500 · argon2 Argon2Error wrapping
   └─ UnsupportedError                    500 · 알고리즘 미지원(sha256 verify)
+infrastructure/notification/common/exception.py
+  NotificationError(InfrastructureDevelopError)    500 · smtplib SMTPException/OSError wrapping
 ```
 
 ### 원칙
@@ -56,25 +60,39 @@ infrastructure/hash/common/exception.py  (어댑터 고유 typed 예외)
 - 레이어 공통 예외(베이스·여러 어댑터 공유)는 `common/exception.py`에. 어댑터 고유 typed 예외는 그 어댑터 `common/`에(`database/common/exception.py`의 `DatabaseError`/`UniqueViolationError`, `hash/common/exception.py`의 `HashError`). 진짜 dialect/구현 고유 typed 예외만 그 구현 옆에
 - `core/exception.py`는 루트 전용 — `ApplicationError` + `ClientError`/`DevelopError`만. 구체 예외(`message`/`code` 보유) 금지
 - 레이어가 내는 각 HTTP 카테고리마다 레이어 베이스 — 베이스명 `{Layer}{Category}Error`. domain은 4xx만이라 `DomainClientError` 하나, infra는 `InfrastructureClientError`(4xx, 구체는 `UniqueViolationError` 409 — database/common) + `InfrastructureDevelopError`(500) 둘. 모든 구체 예외는 레이어 베이스 경유 — 직접 `ClientError`/`DevelopError` 상속 우회 없음
-- 미처리 예외는 `internal()` catch-all — 단 raw 오류는 경계(어댑터)에서 typed 변환: DB는 `transactional_session`에서 `SQLAlchemyError → DatabaseError`, hash는 `argon2/client.py`에서 `Argon2Error → VerifyError`
+- 미처리 예외는 `internal()` catch-all — 단 raw 오류는 경계(어댑터)에서 typed 변환. 외부 lib 예외를 그 어댑터 typed로(`SQLAlchemyError → DatabaseError`, `Argon2Error → VerifyError`, `SMTPException/OSError → NotificationError`, asyncpg `PostgresError/OSError → ListenError`). 외부 시스템(DB·hash·SMTP·asyncpg LISTEN)을 만지는 어댑터는 전부 typed 경계를 갖는다 — raw 전파 0
 - 구체 예외만 `message`/`code` 채움 — 베이스(`...`)는 분류용 마디
 - core 내부 가드(`by_factory`/`typecheck`)는 새 예외 없이 `DevelopError`를 직접 raise — 구체 예외는 레이어 `common`에만
 
 ---
 
-## 메시지 규약 — head + message + path 3단
+## 메시지 규약 — key/params + head + message + path 3단
 
-모든 예외 메시지는 base(`ApplicationError.__init__`)가 자동 조립. 구체 예외는 description만 넘긴다:
+구체 예외는 catalog `key` + 치환 `params`만 넘긴다. base(`ApplicationError.__init__`)가 `core/i18n.py`로 메시지를 렌더하고 head·범주·위치를 자동 조립:
+
+```python
+# good: 구체 예외는 catalog key + params (메시지 문자열 직접 작성 안 함)
+super().__init__(key="not_found", params={"target": "Secret", "identifier": id}, code=404)
+```
 
 ```
 {ErrorName} - {category} ({code})
-	 message: {description}
+	 message: {rendered}
 	 path: {repo-relative-path}:{line}
 ```
 
 - head: `type(self).__name__` + `_category()`(`ClientError`/`DevelopError`) + `code`. (core 가드처럼 `DevelopError` 직접 raise하면 `DevelopError - DevelopError (500)` — 의도된 표기)
-- `message`: description 한 줄. 형식 `{주어} {서술} (라벨: 값[, ...])` — 디테일은 전부 괄호 + 한국어 `라벨: 값` 쌍. 표준 라벨: `식별자`/`원인`/`실제`/`작업`/`조치`/`허용`
+- `message`: catalog `_CATALOG[key][locale].format(**params)` 한 줄. 형식 `{주어} {서술} (라벨: 값[, ...])` — 디테일은 전부 괄호 + 한국어 `라벨: 값` 쌍. 표준 라벨: `식별자`/`원인`/`실제`/`작업`/`조치`/`허용`
 - `path` (`_origin`): 스택에서 `exception.py` 프레임 스킵하고 처음 만나는 호출자 프레임 → 실제 raise한 도메인/usecase 위치
+- 예외: core 가드(`by_factory`/`typecheck`)는 catalog 없이 `message=` 직접(1회성 진단 문자열, `DevelopError` 직접 raise) — 레이어 구체 예외만 catalog 경유
+
+### 다국어 — catalog 단일 출처 + 요청 locale 재렌더
+
+메시지 카탈로그는 `core/i18n.py` 단일 출처. `key`마다 locale별(`ko`/`en`) 템플릿, `DEFAULT=ko`. 같은 `key`/`params`를 두 시점에 다른 locale로 렌더한다:
+
+- 생성 시점 → `DEFAULT`(ko) 렌더. 내부용(`self.msg`/로그/dev traceback)은 항상 ko(진단 일관)
+- 응답 시점 → `client()`(4xx) 핸들러가 `Accept-Language`로 locale 판정 후 같은 `key`/`params` 재렌더. 사용자 응답만 요청 언어. (5xx는 `internal()`이 prod 마스킹이라 locale 무관 — EN 항목은 4xx 사용자 노출용)
+- 새 구체 예외 = catalog에 `key` 추가 동반. 없는 key는 `render`가 `KeyError` — 빈 key 금지
 
 ### 4xx vs 5xx 스타일
 
@@ -111,5 +129,7 @@ DevelopError - DevelopError (500)
 - 레이어 공통 예외(베이스·공유)를 어댑터에 흩뿌림 → `common/exception.py`에 집약. 어댑터 고유 typed 예외는 그 어댑터 `common/`에(`database/common/exception.py`·`hash/common/exception.py`)
 - `core/exception.py`에 구체 예외 추가 → 루트엔 `ApplicationError` + 2분류만
 - 구체 예외가 `ClientError`/`DevelopError`를 직접 상속 → 레이어 베이스(`{Layer}{Category}Error`) 경유
-- raw DB/어댑터 오류를 그대로 전파 → 경계에서 typed 변환(`DatabaseError`/`HashError`)
+- raw DB/어댑터 오류를 그대로 전파 → 경계에서 typed 변환(`DatabaseError`/`NotificationError`/`ListenError`/`HashError`)
+- 레이어 구체 예외가 `message=` 문자열 직접 작성 → catalog `key`+`params`(core 가드만 `message=` 예외)
+- catalog 키를 응답 핸들러·예외 클래스에 분산 → `core/i18n.py` 단일 출처
 - 예외 핸들러를 카테고리별 N개 등록 → `client()`/`internal()` 2개로 충분(MRO 분기)

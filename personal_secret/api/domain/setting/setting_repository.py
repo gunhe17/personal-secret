@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from personal_secret.api.core.model import Model
+from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.common.exception import NotFoundError
 
@@ -89,10 +90,12 @@ class SettingRepository(PostgresRepository[Setting, SettingModel]):
     # read
 
     @classmethod
+    @typecheck
     async def find_by_key(cls, *, session: AsyncSession, key: Key) -> Setting | None:
         return await cls._find_by(session=session, column="key", value=key.to_str())
 
     @classmethod
+    @typecheck
     async def get_by_key(cls, *, session: AsyncSession, key: Key) -> Setting:
         setting = await cls.find_by_key(session=session, key=key)
         if setting is None:
@@ -100,6 +103,7 @@ class SettingRepository(PostgresRepository[Setting, SettingModel]):
         return setting
 
     @classmethod
+    @typecheck
     async def list_all(cls, *, session: AsyncSession, limit: int | None = None, offset: int | None = None) -> list[Setting]:
         return await cls._filter(session=session, order_by="key", limit=limit, offset=offset)
 
@@ -107,6 +111,7 @@ class SettingRepository(PostgresRepository[Setting, SettingModel]):
     # command
 
     @classmethod
+    @typecheck
     async def set_by_key(cls, *, session: AsyncSession, key: Key, value: Value) -> Setting:
         # upsert
         existing = await cls.find_by_key(session=session, key=key)

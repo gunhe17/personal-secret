@@ -1,23 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from uuid import UUID
-
-from fastapi import Depends, Header
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends
 from starlette.responses import JSONResponse
 
-from personal_secret.api.domain.common.exception import ForbiddenError, UnauthorizedError
-
-from personal_secret.api.domain.token.fingerprint import Fingerprint
-from personal_secret.api.domain.token.token_repository import TokenRepository
-
-from personal_secret.api.domain.account_team.account_team import AccountTeam
-from personal_secret.api.domain.account_team.account_team_repository import AccountTeamRepository
-
-from personal_secret.api.infrastructure.hash.sha256.client import sha256
-from personal_secret.api.infrastructure.database.postgresql.session import transactional_session_helper
+from personal_secret.api.behavior import use_postgresql_session_with_event
+from personal_secret.api.behavior import use_postgresql_context_with_event
 
 from personal_secret.api.usecase import auth_register
 from personal_secret.api.usecase import auth_login
@@ -29,75 +16,41 @@ from personal_secret.api.usecase import auth_get_only_salts
 
 async def post_register(
     body: auth_register.Input,
-    session: AsyncSession = Depends(transactional_session_helper),
+    *,
+    session=Depends(use_postgresql_session_with_event),
+    context=Depends(use_postgresql_context_with_event),
 ) -> JSONResponse:
-    registered = await auth_register.register(session=session, input=body)
+    registered = await auth_register.register(
+        session=session,
+        event_group_id=context.event_group_id,
+        input=body,
+    )
     return JSONResponse(status_code=200, content=registered.to_dict())
 
 
 async def get_salts(
     email: str,
-    session: AsyncSession = Depends(transactional_session_helper),
+    *,
+    session=Depends(use_postgresql_session_with_event),
+    context=Depends(use_postgresql_context_with_event),
 ) -> JSONResponse:
-    found = await auth_get_only_salts.get_only_salts(session=session, input=auth_get_only_salts.Input(email=email))
+    found = await auth_get_only_salts.get_only_salts(
+        session=session,
+        event_group_id=context.event_group_id,
+        input=auth_get_only_salts.Input(email=email),
+    )
     return JSONResponse(status_code=200, content=found.to_dict())
 
 
 async def post_login(
     body: auth_login.Input,
-    session: AsyncSession = Depends(transactional_session_helper),
+    *,
+    session=Depends(use_postgresql_session_with_event),
+    context=Depends(use_postgresql_context_with_event),
 ) -> JSONResponse:
-    logged_in = await auth_login.login(session=session, input=body)
+    logged_in = await auth_login.login(
+        session=session,
+        event_group_id=context.event_group_id,
+        input=body,
+    )
     return JSONResponse(status_code=200, content=logged_in.to_dict())
-
-
-# #
-# guard — authentication
-
-async def require_auth(
-    authorization: str | None = Header(default=None),
-    session: AsyncSession = Depends(transactional_session_helper),
-) -> UUID:
-    # bearer
-    if authorization is None or not authorization.startswith("Bearer "):
-        raise UnauthorizedError()
-    raw = authorization[len("Bearer "):].strip()
-
-    # lookup
-    token = await TokenRepository.find_by_fingerprint(
-        session=session,
-        fingerprint=Fingerprint.from_str(sha256.hash(value=raw)),
-    )
-    if token is None or token.is_expired(now=datetime.now(timezone.utc)):
-        raise UnauthorizedError()
-    return token.account_id
-
-
-# #
-# guard — authorization
-
-async def require_member(
-    team_id: UUID,
-    account_id: UUID = Depends(require_auth),
-    session: AsyncSession = Depends(transactional_session_helper),
-) -> AccountTeam:
-    membership = await AccountTeamRepository.find_by_account_and_team(
-        session=session,
-        account_id=account_id,
-        team_id=team_id,
-    )
-    if membership is None:
-        raise ForbiddenError("Team")
-
-    # RLS 백스톱 — 이 트랜잭션의 모든 tenant 쿼리를 team_id 로 강제
-    await session.execute(
-        text("SELECT set_config('app.current_team', :team, true)"),
-        {"team": str(team_id)},
-    )
-    return membership
-
-
-async def require_owner(membership: AccountTeam = Depends(require_member)) -> AccountTeam:
-    if not membership.role.is_owner():
-        raise ForbiddenError("Team")
-    return membership

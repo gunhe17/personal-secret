@@ -2,19 +2,22 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from personal_secret.api.core.usecase import In
 from personal_secret.api.core.usecase import Out
 from personal_secret.api.core.validate import typecheck
 
-from personal_secret.api.domain.account_team.account_team import AccountTeam
-from personal_secret.api.domain.account_team.role import Role
-from personal_secret.api.domain.account_team.team_locked_key import TeamLockedKey
-from personal_secret.api.domain.account_team.account_team_repository import AccountTeamRepository
-from personal_secret.api.domain.account_team.account_team_event import AccountTeamEvent
+from personal_secret.api.domain.team_access.team_access import TeamAccess
+from personal_secret.api.domain.team_access.role import Role
+from personal_secret.api.domain.team_access.team_locked_key import TeamLockedKey
+from personal_secret.api.domain.team_access.team_access_repository import TeamAccessRepository
+from personal_secret.api.domain.team_access.team_access_event import TeamAccessEvent
 
-from personal_secret.api.domain.event.event_repository import EventRepository
+from personal_secret.api.domain.account.account_repository import AccountRepository
+from personal_secret.api.domain.team.team_repository import TeamRepository
+
+from personal_secret.api.domain.event.event.event_repository import EventRepository
 
 from personal_secret.api.infrastructure.database.postgresql.client import db_client
 from personal_secret.api.infrastructure.database.common.session import transactional_session
@@ -26,7 +29,6 @@ from personal_secret.api.infrastructure.database.common.session import transacti
 class Input(In):
     account_id: str
     role: str = "member"
-    # team_key 를 초대받는이 personal_lock 으로 봉인한 사본 (초대자 클라가 생성)
     team_locked_key: str
 
 
@@ -41,30 +43,44 @@ class Output(Out):
 # usecase
 
 @typecheck
-async def invite(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> Output:
+async def invite(*, session, event_group_id, input: Input, team_id: UUID, account_id: UUID | None = None) -> Output:
+    # context
+    invitee = await AccountRepository.get_by_id(
+        session=session,
+        id=UUID(input.account_id),
+    )
+    team = await TeamRepository.get_by_id(
+        session=session,
+        id=team_id,
+    )
+
     # persist
-    event, membership = AccountTeamEvent.created(
-        membership=await AccountTeamRepository.add_unique_by_account_and_team(
+    event, team_access = TeamAccessEvent.created(
+        team_access=await TeamAccessRepository.add_unique_by_account_and_team(
             session=session,
-            entity=AccountTeam.new(
+            entity=TeamAccess.new(
                 account_id=UUID(input.account_id),
                 team_id=team_id,
                 role=Role.from_str(input.role),
                 team_locked_key=TeamLockedKey.from_str(input.team_locked_key),
             ),
         ),
+        email=invitee.email.to_str(),
+        team_name=team.name.to_str(),
     )
 
     # return
-    return Output.new(
-        data=membership.to_dict(),
+    return Output(
+        data=team_access.to_dict(),
         event=[
             event.to_dict()
             for event in (
                 await EventRepository.emit(
                     session=session,
-                    events=[event],
-                    actor_id=actor_id,
+                    id=event_group_id,
+                    name="team_invite",
+                    atomics=[event],
+                    actor_id=account_id,
                     actor_team_id=team_id,
                 )
             )
@@ -89,6 +105,7 @@ async def _main():
         print(
             await invite(
                 session=session,
+                event_group_id=uuid4(),
                 input=Input(
                     account_id=args.account_id,
                     role=args.role,

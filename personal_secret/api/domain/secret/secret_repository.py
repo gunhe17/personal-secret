@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from personal_secret.api.core.model import Model
+from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.domain.common.exception import AlreadyExistsError, NotFoundError
 
@@ -115,8 +116,8 @@ def _to_secret(model: SecretModel) -> Secret:
 
 # #
 # repository
-# (모든 finder 는 team_id 로 스코프 — 테넌트 격리. RLS 가 DB 백스톱)
 
+# 모든 finder 는 team_id 로 스코프한다. 테넌트 격리의 DB 백스톱은 RLS
 class SecretRepository(PostgresRepository[Secret, SecretModel]):
     model = SecretModel
     mapper = _to_secret
@@ -125,6 +126,7 @@ class SecretRepository(PostgresRepository[Secret, SecretModel]):
     # create
 
     @classmethod
+    @typecheck
     async def add_unique_by_path(cls, *, session: AsyncSession, entity: Secret) -> Secret:
         try:
             await cls._ensure_unique(
@@ -140,6 +142,7 @@ class SecretRepository(PostgresRepository[Secret, SecretModel]):
     # read
 
     @classmethod
+    @typecheck
     async def get_by_id(cls, *, session: AsyncSession, id: UUID, team_id: UUID) -> Secret:
         # 다른 팀 secret 은 존재해도 NotFound (존재 노출 방지)
         secret = await cls._find(
@@ -151,6 +154,7 @@ class SecretRepository(PostgresRepository[Secret, SecretModel]):
         return secret
 
     @classmethod
+    @typecheck
     async def find_by_path(
         cls,
         *,
@@ -173,6 +177,7 @@ class SecretRepository(PostgresRepository[Secret, SecretModel]):
         )
 
     @classmethod
+    @typecheck
     async def search(
         cls,
         *,
@@ -203,6 +208,7 @@ class SecretRepository(PostgresRepository[Secret, SecretModel]):
     # update
 
     @classmethod
+    @typecheck
     async def update(cls, *, session: AsyncSession, entity: Secret) -> Secret:
         updated = await super().update(session=session, entity=entity)
         if updated is None:
@@ -213,6 +219,7 @@ class SecretRepository(PostgresRepository[Secret, SecretModel]):
     # delete
 
     @classmethod
+    @typecheck
     async def remove_by_id(cls, *, session: AsyncSession, id: UUID) -> Secret:
         removed = await super().remove_by_id(session=session, id=id)
         if removed is None:

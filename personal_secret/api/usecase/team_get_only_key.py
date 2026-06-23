@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from personal_secret.api.core.usecase import In
 from personal_secret.api.core.usecase import Out
 from personal_secret.api.core.validate import typecheck
 
-from personal_secret.api.domain.account_team.account_team_repository import AccountTeamRepository
-from personal_secret.api.domain.account_team.account_team_event import AccountTeamEvent
+from personal_secret.api.domain.team_access.team_access_repository import TeamAccessRepository
+from personal_secret.api.domain.team_access.team_access_event import TeamAccessEvent
 
-from personal_secret.api.domain.event.event_repository import EventRepository
+from personal_secret.api.domain.event.event.event_repository import EventRepository
 
 from personal_secret.api.infrastructure.database.postgresql.client import db_client
 from personal_secret.api.infrastructure.database.common.session import transactional_session
@@ -35,30 +35,34 @@ class Output(Out):
 # usecase
 
 @typecheck
-async def get_only_key(*, session, input: Input, team_id: UUID, actor_id: UUID) -> Output:
+async def get_only_key(*, session, event_group_id, input: Input, team_id: UUID, account_id: UUID) -> Output:
     # find
-    event, membership = AccountTeamEvent.read(
-        membership=(
-            await AccountTeamRepository.get_by_account_and_team(
+    event, team_access = TeamAccessEvent.read(
+        team_access=(
+            await TeamAccessRepository.get_by_account_and_team(
                 session=session,
-                account_id=actor_id,
+                account_id=account_id,
                 team_id=team_id,
             )
         )
     )
 
-    # emit
-    await EventRepository.emit(
-        session=session,
-        events=[event],
-        actor_id=actor_id,
-        actor_team_id=team_id,
-    )
-
     # return
-    return Output.new(
-        data=membership.to_keys(),
-        event=None,
+    return Output(
+        data=team_access.to_keys(),
+        event=[
+            event.to_dict()
+            for event in (
+                await EventRepository.emit(
+                    session=session,
+                    id=event_group_id,
+                    name="team_get_only_key",
+                    atomics=[event],
+                    actor_id=account_id,
+                    actor_team_id=team_id,
+                )
+            )
+        ],
     )
 
 
@@ -77,9 +81,10 @@ async def _main():
         print(
             await get_only_key(
                 session=session,
+                event_group_id=uuid4(),
                 input=Input(),
                 team_id=UUID(args.team_id),
-                actor_id=UUID(args.account_id),
+                account_id=UUID(args.account_id),
             )
         )
 

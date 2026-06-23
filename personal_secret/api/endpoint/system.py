@@ -2,7 +2,7 @@ from pathlib import Path
 
 from fastapi.responses import FileResponse
 
-from personal_secret.api.infrastructure.introspect.map import build_map
+from personal_secret.api.infrastructure.map.client import map_client
 
 
 # #
@@ -16,7 +16,7 @@ def health() -> dict:
 # map
 
 def map() -> dict:
-    return build_map()
+    return map_client.build()
 
 
 def page_map() -> FileResponse:

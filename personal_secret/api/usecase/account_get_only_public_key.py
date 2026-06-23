@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from personal_secret.api.core.usecase import In
 from personal_secret.api.core.usecase import Out
@@ -12,7 +12,7 @@ from personal_secret.api.domain.account.email import Email
 from personal_secret.api.domain.account.account_repository import AccountRepository
 from personal_secret.api.domain.account.account_event import AccountEvent
 
-from personal_secret.api.domain.event.event_repository import EventRepository
+from personal_secret.api.domain.event.event.event_repository import EventRepository
 
 from personal_secret.api.infrastructure.database.postgresql.client import db_client
 from personal_secret.api.infrastructure.database.common.session import transactional_session
@@ -36,7 +36,7 @@ class Output(Out):
 # usecase
 
 @typecheck
-async def get_only_public_key(*, session, input: Input, actor_id: UUID | None = None) -> Output:
+async def get_only_public_key(*, session, event_group_id, input: Input, account_id: UUID | None = None) -> Output:
     # find
     event, account = AccountEvent.read(
         account=(
@@ -47,20 +47,24 @@ async def get_only_public_key(*, session, input: Input, actor_id: UUID | None = 
         )
     )
 
-    # emit
-    await EventRepository.emit(
-        session=session,
-        events=[event],
-        actor_id=actor_id,
-    )
-
     # return
-    return Output.new(
+    return Output(
         data={
             "account_id": str(account.id),
             "personal_lock": account.personal_lock.to_str(),
         },
-        event=None,
+        event=[
+            event.to_dict()
+            for event in (
+                await EventRepository.emit(
+                    session=session,
+                    id=event_group_id,
+                    name="account_get_only_public_key",
+                    atomics=[event],
+                    actor_id=account_id,
+                )
+            )
+        ],
     )
 
 
@@ -78,6 +82,7 @@ async def _main():
         print(
             await get_only_public_key(
                 session=session,
+                event_group_id=uuid4(),
                 input=Input(email=args.email),
             )
         )

@@ -27,25 +27,31 @@ aggregate별 route handler 모음(`secret.py`). usecase 함수를 호출하고 �
 
 ```python
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse
 
-from personal_secret.api.infrastructure.database.postgresql.session import transactional_session_helper
-from personal_secret.api.usecase.secret import create
+from personal_secret.api.behavior import use_postgresql_session_with_event
+from personal_secret.api.behavior import use_postgresql_context_with_event
+from personal_secret.api.usecase import auth_register
 
 # #
 # command
 
-async def post_create(
-    body: create.Input,
-    session: AsyncSession = Depends(transactional_session_helper),
+async def post_register(
+    body: auth_register.Input,
+    *,
+    session=Depends(use_postgresql_session_with_event),
+    context=Depends(use_postgresql_context_with_event),
 ) -> JSONResponse:
-    created = await create.create(session=session, input=body)
-    return JSONResponse(status_code=200, content=created.to_dict())
+    registered = await auth_register.register(
+        session=session,
+        event_group_id=context.event_group_id,
+        input=body,
+    )
+    return JSONResponse(status_code=200, content=registered.to_dict())
 ```
 
 - 핸들러는 HTTP 메서드 접두 — `post_create`/`get_reveal`. 라우트 메서드를 이름에서 바로 읽는다(usecase 함수명 `create`/`reveal`과 구분)
-- session은 `Depends(transactional_session_helper)`로 주입받아 usecase에 넘긴다 ([INV-5], [usecase-flow.md](usecase-flow.md))
+- session·context는 behavior splitter 두 의존성으로 주입받는다 ([behavior.md](behavior.md), [INV-5]) — `session`은 usecase에 넘기고 `event_group_id`/`account_id`/`team_id`는 `context`(Scope)에서 꺼내 전달. 라우트 레벨(미인증/account/team/owner)이 splitter 이름으로 갈린다
 - 검증/도메인 조작/transaction 조정은 전부 아래 레이어가 — endpoint는 얇게
 - 예외는 직접 처리하지 않는다 — `ClientError`/`DevelopError`가 핸들러로 자동 분기 ([INV-4], [exception.md](exception.md))
 - 등록은 endpoint가 아니라 `bin/server.py`(합성 루트)에서 — endpoint는 핸들러만 정의([server.md](server.md))

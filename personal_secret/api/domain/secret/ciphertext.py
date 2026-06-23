@@ -9,8 +9,7 @@ from personal_secret.api.domain.common.exception import InvalidError, InvalidFor
 
 @dataclass(frozen=True, kw_only=True)
 class Ciphertext(ValueObject):
-    # nonce + ciphertext를 합친 불투명 blob (포맷은 crypto가 소유)
-    _value: bytes
+    _value: bytes  # nonce+ciphertext blob, 포맷은 crypto 가 소유
 
     # #
     # factory

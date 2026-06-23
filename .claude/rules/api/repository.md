@@ -99,7 +99,7 @@ where = [sa.or_(SecretModel.name.ilike(f"%{q}%"), SecretModel.tags.contains([q])
 
 ---
 
-## write 반환 규약 + must-exist override — [INV-3]
+## must-exist + write 반환 규약 — [INV-3]
 
 write 메서드는 DB 반영 entity를 반환(`add -> E`, `add_many -> list[E]`, `update -> E | None`, `remove_by_id -> E | None`):
 
@@ -108,6 +108,14 @@ write 메서드는 DB 반영 entity를 반환(`add -> E`, `add_many -> list[E]`,
 - base는 `.first()`+`None`(`E | None`, raise 안 함) — 부재가 비정상인 **must-exist**면 domain repo가 `update`/`remove_by_id`를 override해 `None → NotFoundError`로 raise(반환을 `E`로 좁힘). `update`/`remove_by_id` 완전 대칭, "본문 있는 도메인 가드"라 passthrough-override 예외
   - 적용 조건: ① must-exist 의미일 때만(optional/멱등 upsert면 base 그대로, usecase가 `None` 분기) ② 본문 없는 단순 위임 금지 ③ base 계약(`E | None`)을 좁히므로 `None` 기대 호출처 없어야 함(끌어올리기 전 의존처 확인)
   - 효과: not-found 변환의 단일 발생처 = repo. usecase는 happy-path만
+
+read도 동일 — `find_by_X`(optional, `E | None`) vs `get_by_X`(must-exist, `E`). 부재가 비정상인 조회는 도메인 repo가 `get_by_X`로 노출: `_find`(또는 base `find_by_id`) + `if None: raise` + 반환 `E`(`get_by_id`/`get_by_email`/`get_by_key`/`get_by_account_and_team`). write는 base override, read는 새 `get_` 메서드.
+
+호출처(usecase·guard) 계약 — must-exist 조회에 `find_by_X` + `if None: raise`를 **인라인하지 않는다**. not-found 가드는 repo의 `get_by_X` 한 곳에만 산다. 필요한 `get_by_X`가 repo에 없으면 그걸 *추가*한다(guard를 호출처로 흘리지 말 것). `find_by_X`는 부재가 정상(optional·분기·멱등)일 때만 호출처가 직접 쓰고 `None`을 분기한다.
+
+raise 예외는 aggregate 맞춤 — 기본 `NotFoundError`, 부재 의미가 단순 not-found보다 날카로우면 그 도메인 예외로. 예: `AccountTokenRepository.get_valid_by_fingerprint`는 무효·만료 토큰을 `UnauthorizedError`로 raise(없음 = 인증 실패, 404 아님).
+
+한 조회가 여러 *질문*에 쓰이면 질문별 `get_` 메서드로 가른다(각자 그 질문의 에러). 예: account+team 조회 — 데이터 질문 `get_by_account_and_team`(`NotFoundError` 404) vs authz 질문 `get_valid_by_account_and_team`(`ForbiddenError` 403). 부재 의미가 맥락마다 달라도 질문을 메서드로 고정하면 repo가 정확한 에러를 raise.
 
 usecase는 반환 entity를 `to_dict()` — 생성/수정 응답에도 타임스탬프 일관. exists는 의도대로 `bool` 유지.
 
@@ -153,6 +161,7 @@ async def add_unique_by_name(cls, *, session, entity: Secret) -> Secret:
 - domain repo가 `select(...).where(...)` 문 전체 작성(plumbing 재구현) → 코어 위임. 단 `Model.col == v` clause를 `_filter(where=[...])`에 넘기는 건 정석
 - fetch 후 파이썬 후필터/정렬/슬라이싱(`[x for x in ...]`, `sorted`, `[:n]`) → `_filter(where=[...])` + `order_by` + `limit`/`offset`(페이지는 `_page`)
 - 존재 확인을 `find_by_X(...) is not None`(entity 전체 fetch) → `exists_by_X`(`_exists_by`, count 기반 `bool`)
+- must-exist 조회를 호출처에서 `find_by_X` + `if None: raise` 인라인 → repo의 `get_by_X`(`find` + `if None: raise` + `-> E`). 없으면 repo에 추가, usecase는 happy-path만 ([INV-3])
 - domain repo `__init__`/`__init_subclass__` → `model`/`mapper` class variable만
 - domain repo 메서드를 인스턴스 메서드(`self`)로 / repo 싱글톤·인스턴스화 → 전부 `@classmethod`, 클래스 자체 호출 ([INV-6])
 - base CRUD passthrough override(`async def add(...): return await super().add(...)`) → 제네릭이 타입 좁힘. 본문 있는 도메인 가드일 때만 override

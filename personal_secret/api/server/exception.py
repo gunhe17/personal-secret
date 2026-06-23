@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from personal_secret.api.config import Env, get_app_config
 from personal_secret.api.core.exception import ApplicationError, ClientError
+from personal_secret.api.core.i18n import DEFAULT, Locale, render
 
 
 class ExceptionHandler:
@@ -27,18 +28,40 @@ class ExceptionHandler:
 
 
 # #
+# locale
+
+def _locale(request: Request) -> Locale:
+    header = request.headers.get("accept-language", "")
+    for part in header.split(","):
+        code = part.split(";")[0].strip().lower().split("-")[0]
+        if code == Locale.EN:
+            return Locale.EN
+        if code == Locale.KO:
+            return Locale.KO
+    return DEFAULT
+
+
+# #
 # factory
 
 def client() -> ExceptionHandler:
-    async def handler(_: Request, exc: Exception) -> JSONResponse:
+    async def handler(request: Request, exc: Exception) -> JSONResponse:
         # env
         env = get_app_config().APPLICATION_ENVIRONMENT
         is_dev_phase = env == Env.DEVELOP or env == Env.TEST
 
+        # localize
+        key = getattr(exc, "key", None)
+        message = (
+            render(key=key, params=getattr(exc, "params", {}), locale=_locale(request))
+            if key
+            else getattr(exc, "message", None) or str(exc)
+        )
+
         # body
         body = {
             "error": type(exc).__name__,
-            "message": getattr(exc, "msg", str(exc)),
+            "message": message,
         }
         if is_dev_phase and isinstance(exc, ApplicationError):
             body["traceback"] = exc.__trace_back__()
