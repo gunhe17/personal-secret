@@ -4,24 +4,40 @@ import inspect
 import os
 import traceback
 
+from personal_secret.api.core.i18n import DEFAULT, render
+
 
 # #
 # base
 
 class ApplicationError(Exception):
-    def __init__(self, message: str | None = None, code: int | None = None):
+    def __init__(
+        self,
+        *,
+        message: str | None = None,
+        key: str | None = None,
+        params: dict | None = None,
+        code: int | None = None,
+    ):
+        self.key = key
+        self.params = params or {}
         self.code = code
-        self.category = self._category()                     # "ClientError" | "DevelopError"
-        self.location = self._origin()                       # "personal_secret/api/.../x.py:135"
+
+        self.message = (
+            render(key=key, params=self.params, locale=DEFAULT)
+            if message is None and key is not None
+            else (message or "")
+        )
+        self.category = self._category()  # "ClientError" | "DevelopError"
+        self.location = self._origin()  # "personal_secret/api/.../x.py:135"
         self.msg = (
             f"{type(self).__name__} - {self.category} ({self.code})"
-            f"\n\t message: {message or ''}"
+            f"\n\t message: {self.message}"
             f"\n\t path: {self.location}"
         )
         super().__init__(self.msg)
 
     def _category(self) -> str:
-        # MRO에서 2분류(ClientError/DevelopError)를 찾아 큰 범주 표기
         for klass in type(self).__mro__:
             if klass.__name__ in ("ClientError", "DevelopError"):
                 return klass.__name__
@@ -29,8 +45,8 @@ class ApplicationError(Exception):
 
     @staticmethod
     def _origin() -> str:
-        # 예외 정의(exception.py) 프레임을 건너뛰어 실제 raise한 코드 위치를 찾는다
-        frame = inspect.currentframe().f_back
+        current = inspect.currentframe()
+        frame = current.f_back if current is not None else None
         while frame is not None and frame.f_code.co_filename.endswith("exception.py"):
             frame = frame.f_back
         if frame is None:
