@@ -40,6 +40,117 @@ def is_develop() -> bool:
         DefaultAppConfig().APPLICATION_ENVIRONMENT == Env("develop")
     )
 
+# #
+# worker
+
+class WorkerConfig(ABC):
+    @property
+    @abstractmethod
+    def CONCURRENCY(self) -> int: ...
+
+
+class DevelopWorkerConfig(WorkerConfig):
+    @property
+    def CONCURRENCY(self) -> int:
+        return int(os.environ["DEVELOP_WORKER_CONCURRENCY"])
+
+
+class ProductionWorkerConfig(WorkerConfig):
+    @property
+    def CONCURRENCY(self) -> int:
+        return int(os.environ["PRODUCTION_WORKER_CONCURRENCY"])
+
+
+def get_worker_config() -> WorkerConfig:
+    env = get_app_config().APPLICATION_ENVIRONMENT
+    if env == Env.DEVELOP:
+        config = DevelopWorkerConfig()
+    elif env == Env.PRODUCTION:
+        config = ProductionWorkerConfig()
+    else:
+        raise NotImplementedError(f"worker config not implemented for env={env}")
+    return config
+
+
+# #
+# email
+
+class EmailConfig(ABC):
+    @property
+    @abstractmethod
+    def SMTP_HOST(self) -> str: ...
+
+    @property
+    @abstractmethod
+    def SMTP_PORT(self) -> int: ...
+
+    @property
+    @abstractmethod
+    def SMTP_USER(self) -> str: ...
+
+    @property
+    @abstractmethod
+    def SMTP_PASSWORD(self) -> str: ...
+
+    @property
+    @abstractmethod
+    def SMTP_FROM(self) -> str: ...
+
+
+class DevelopEmailConfig(EmailConfig):
+    @property
+    def SMTP_HOST(self) -> str:
+        return os.environ["DEVELOP_SMTP_HOST"]
+
+    @property
+    def SMTP_PORT(self) -> int:
+        return int(os.environ["DEVELOP_SMTP_PORT"])
+
+    @property
+    def SMTP_USER(self) -> str:
+        return os.environ["DEVELOP_SMTP_USER"]
+
+    @property
+    def SMTP_PASSWORD(self) -> str:
+        return os.environ["DEVELOP_SMTP_PASSWORD"]
+
+    @property
+    def SMTP_FROM(self) -> str:
+        return os.environ["DEVELOP_SMTP_FROM"]
+
+
+class ProductionEmailConfig(EmailConfig):
+    @property
+    def SMTP_HOST(self) -> str:
+        return os.environ["PRODUCTION_SMTP_HOST"]
+
+    @property
+    def SMTP_PORT(self) -> int:
+        return int(os.environ["PRODUCTION_SMTP_PORT"])
+
+    @property
+    def SMTP_USER(self) -> str:
+        return os.environ["PRODUCTION_SMTP_USER"]
+
+    @property
+    def SMTP_PASSWORD(self) -> str:
+        return os.environ["PRODUCTION_SMTP_PASSWORD"]
+
+    @property
+    def SMTP_FROM(self) -> str:
+        return os.environ["PRODUCTION_SMTP_FROM"]
+
+
+def get_email_config() -> EmailConfig:
+    env = get_app_config().APPLICATION_ENVIRONMENT
+    if env == Env.DEVELOP:
+        config = DevelopEmailConfig()
+    elif env == Env.PRODUCTION:
+        config = ProductionEmailConfig()
+    else:
+        raise NotImplementedError(f"email config not implemented for env={env}")
+    return config
+
 
 # #
 # postgres
@@ -65,9 +176,17 @@ class PostgresConfig(ABC):
     @abstractmethod
     def POSTGRES_DB(self) -> str: ...
 
-    def database_url(self) -> str:
+    def async_database_url(self) -> str:
         return (
             f"postgresql+asyncpg://"
+            f"{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}"
+            f"/{self.POSTGRES_DB}"
+        )
+    
+    def database_url(self) -> str:
+        return (
+            f"postgresql://"
             f"{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}"
             f"/{self.POSTGRES_DB}"

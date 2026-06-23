@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>personal_secret · map</title>
+<style>
+  :root{
+    --bg:#ffffff; --line:#e4e7eb; --fg:#1a1d21;
+    --muted:#8a9099; --faint:#b0b6bd; --rel:#b9c0c9;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);overflow:hidden;
+    font:13px/1.5 -apple-system,"Segoe UI",Roboto,"Noto Sans KR",sans-serif}
+
+  /* gallery (lab mode) — 모양 통일, 배경 slate 농도로 타입 구분 (compact) */
+  .card{position:absolute;width:max-content;border:1px solid var(--line);border-radius:9px;overflow:hidden;
+    font-family:var(--mono);user-select:none;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+  .card .hd{display:flex;align-items:center;gap:7px;height:36px;padding:0 11px;border-bottom:1px solid rgba(15,23,42,.08)}
+  .card .bd{padding:8px 11px 10px}
+  .card .ttl{flex:1;font-size:10.5px;font-weight:700;color:var(--fg);white-space:nowrap;line-height:1.3}
+  .card .ttl .sub{font-weight:400;font-size:8.5px;color:var(--muted);margin-left:5px}
+  .card .path{flex:1;font-size:10.5px;font-weight:600;color:var(--fg);white-space:nowrap;line-height:1.3}
+  .card .path .pp{color:#b45309}
+  .card .m{flex:none;min-width:38px;font-weight:800;font-size:10.5px;letter-spacing:.2px}
+  .card .op{flex:none;font-size:7.5px;font-weight:700;color:#fff;padding:1px 5px;border-radius:3px;letter-spacing:.2px}
+  .card .ic{flex:none;font-size:11px;color:#475569}
+
+  /* 원자성 농도: endpoint→usecase→domain→repository→event (진함). domain 부터 흰 텍스트 */
+  .lvl-endpoint{background:#f8fafc}
+  .lvl-usecase{background:#e2e8f0}
+  .lvl-domain{background:#64748b}
+  .lvl-repo{background:#3d4a5c}
+  .lvl-event{background:#27313f}
+  .card.solo .hd{border-bottom:0}
+
+  .lvl-domain .hd,.lvl-repo .hd,.lvl-event .hd{border-bottom-color:rgba(255,255,255,.14)}
+  .lvl-domain .ttl,.lvl-repo .ttl,.lvl-event .ttl{color:#fff}
+  .lvl-domain .lbl,.lvl-repo .lbl,.lvl-event .lbl{color:#94a3b8}
+  .lvl-repo .irow .n{color:#e2e8f0}
+  .lvl-repo .irow .t{color:#cbd5e1}
+  .lvl-repo .none{color:#94a3b8}
+  .lvl-domain .ic,.lvl-repo .ic,.lvl-event .ic{color:#cbd5e1}
+  .lvl-repo .s-in,.lvl-domain .s-in{color:#7dd3fc}
+  .lvl-repo .s-var,.lvl-domain .s-var{color:#86efac}
+  .lvl-repo .s-ctx,.lvl-domain .s-ctx{color:#fcd34d}
+
+  .iolbl{font-size:8px;letter-spacing:.4px;text-transform:uppercase;color:#94a3b8;margin-bottom:5px}
+  .iolbl.div{margin-top:9px;padding-top:8px;border-top:1px solid rgba(255,255,255,.14)}
+  .iogrp{display:flex;flex-direction:column;gap:3px}
+  .iorow{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+  .iorow .ion{color:#e2e8f0;font-size:9.5px;white-space:nowrap}
+  .iorow .s-in,.iorow .s-var,.iorow .s-ctx{font-size:8.5px;white-space:nowrap;text-align:right}
+  .ionone{color:rgba(255,255,255,.3);font-size:9px}
+  /* L5 — input / repository(이중모달) / output 세로 스택 (구분선 + 간격) */
+  .repoblock{margin:10px 0;padding:7px 9px 8px;border-radius:7px;
+    background:rgba(15,23,42,.24);border:1px solid rgba(255,255,255,.13)}
+  .rbhd{display:flex;align-items:center;font-size:8px;letter-spacing:.4px;text-transform:uppercase;color:#94a3b8;margin-bottom:5px}
+  .rbhd .rop{margin-left:5px}
+  .repoblock .iolbl{margin:6px 0 3px}
+
+  /* 세부정보 — auth 배지 / VO 규칙 힌트 / output / event kinds·payload */
+  .authb{flex:none;font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;letter-spacing:.3px;text-transform:uppercase}
+  .auth-none{background:#f1f5f9;color:#64748b} .auth-account{background:#dbeafe;color:#1d4ed8}
+  .auth-team{background:#dcfce7;color:#15803d} .auth-owner{background:#fee2e2;color:#b91c1c}
+  .foot{margin-top:8px;padding-top:6px;border-top:1px solid rgba(15,23,42,.08);font-size:8.5px;color:var(--muted)}
+  .lbl.rl{margin-top:9px}
+  .evk{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:5px}
+  .kd{font-size:8px;padding:1px 5px;border-radius:3px;background:rgba(255,255,255,.08);color:#94a3b8}
+  .kd.on{background:#7c3aed;color:#fff}
+  .evp{font-size:8.5px;color:#94a3b8;word-break:break-all}
+
+  /* inputs / fields (shared, compact) */
+  .lbl{font-size:8px;letter-spacing:.4px;text-transform:uppercase;color:var(--faint);margin-bottom:5px}
+  .lbl.div{margin-top:9px;padding-top:8px;border-top:1px solid var(--line)}
+  .inputs{display:flex;flex-direction:column;gap:3px}
+  .irow{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .irow .n{color:var(--fg);font-size:9.5px;white-space:nowrap}
+  .irow .t{color:#7c3aed;font-size:8.5px;white-space:nowrap;text-align:right}
+  .irow .k{font-size:7px;letter-spacing:.2px;text-transform:uppercase;padding:0 3px;border-radius:3px;margin-left:4px}
+  .k-path{background:#fef3c7;color:#b45309}
+  .k-query{background:#cffafe;color:#0e7490}
+  .k-body{background:#eef2ff;color:#6366f1}
+  .none{color:var(--faint);font-size:9.5px}
+  .s-in{color:#2563eb} .s-var{color:#1a7f37} .s-ctx{color:#b45309;font-weight:600}
+  .rec{font-size:9.5px;font-weight:600;color:#7c3aed;word-break:break-all;line-height:1.4}
+  .st{font-size:8px;color:var(--muted);margin-top:4px;word-break:break-all}
+
+  .node{transition:opacity .12s ease, box-shadow .12s ease, border-color .12s ease}
+  .node.dim{opacity:.18}
+  .node.hot{border-color:var(--fg);box-shadow:0 2px 10px rgba(0,0,0,.14)}
+
+  path.edge{fill:none;stroke-width:1.6;transition:opacity .12s ease}
+  path.fedge{transition:stroke-dashoffset .42s ease, opacity .12s ease}
+  path.vbus{fill:none;transition:stroke-dashoffset .42s ease, opacity .12s ease}
+
+  /* 세로 스크롤 문서 — endpoint=섹션 */
+  #doc{position:fixed;inset:0;overflow-y:auto;overflow-x:hidden;background:#fbfcfd;padding:0 0 120px}
+  .rop{flex:none;font-size:7px;font-weight:700;padding:1px 5px;border-radius:3px;color:#fff;letter-spacing:.3px}
+  .reposec{display:flex;align-items:center}
+  /* L5 우측 DB 부속 노드 */
+  .card.dbnode{width:max-content;background:#334155;border-color:rgba(255,255,255,.14)}
+  .card.dbnode .dbn{display:flex;align-items:center;gap:7px;padding:7px 11px}
+  .card.dbnode .dbi{flex:none}
+  .card.dbnode .dbm{font-family:var(--mono);font-size:9px;color:#e2e8f0;white-space:nowrap}
+  .sec{padding:0 40px 64px}
+  .sec h2{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--fg);
+    margin:60px 0 0;padding-bottom:11px;border-bottom:1px solid var(--line);word-break:break-all}
+  .sec:first-of-type h2{margin-top:8px}
+  .sec h2 .m{font-weight:800;margin-right:4px}
+  .sec h2 .pp{color:#b45309}
+  .sec h2 .uc{font-weight:400;font-size:11px;color:var(--muted);margin-left:10px}
+  .sec h2 .undo{font-family:var(--mono);font-size:13px;line-height:1;color:var(--muted);
+    background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px 7px;margin-left:10px;
+    cursor:pointer;vertical-align:middle}
+  .sec h2 .undo:hover{color:var(--fg);background:#f1f5f9}
+  .diagram{overflow-x:auto;overflow-y:hidden;padding:18px 0 4px;scrollbar-width:none;-ms-overflow-style:none}
+  .diagram::-webkit-scrollbar{display:none;width:0;height:0}
+  .diagram .inner{position:relative}
+  .llabel{position:absolute;font-family:var(--mono);font-size:8.5px;letter-spacing:.7px;
+    text-transform:uppercase;color:var(--faint)}
+
+  /* 최상단 제목 + 목차(박스 없음, 들여쓰기) */
+  .top{background:linear-gradient(#f5f7fa, #f5f7fa calc(100% - 110px), #fbfcfd);padding:20px 40px 110px}
+  .title{font-family:var(--mono);font-size:24px;font-weight:800;color:var(--fg);margin:6px 0 30px}
+  .toc-h{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--fg);margin:0 0 13px}
+  .toc{display:flex;flex-direction:column;gap:4px;padding-left:24px}
+  .toc-i{font-family:var(--mono);font-size:11.5px;color:var(--fg);text-decoration:none;cursor:pointer;white-space:nowrap;padding:2px 0}
+  .toc-i:hover{color:#2563eb}
+  .toc-i .m{display:inline-block;min-width:42px;font-weight:800;margin-right:8px}
+  .toc-i .pp{color:#b45309}
+</style>
+</head>
+<body>
+<div id="doc"></div>
+
+<script>
+let MAP = null;
+const LAYOUT = "L5";
+const API = new URLSearchParams(location.search).get("api") || "";
+const CAT = {create:"#1a7f37",read:"#2563eb",update:"#b45309",delete:"#b3261e",event:"#7c3aed",neutral:"#9aa0a8"};
+
+let svg = null;
+let mount = null;
+let boxes = {};
+const SVGNS = "http://www.w3.org/2000/svg";
+const MARKER_DEFS =
+  '<marker id="arr" markerWidth="12" markerHeight="12" refX="7" refY="6" orient="auto" markerUnits="userSpaceOnUse">'+
+  '<path d="M3,3 L8,6 L3,9" fill="none" stroke="context-stroke" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></marker>'+
+  '<marker id="arrf" markerWidth="12" markerHeight="12" refX="7" refY="6" orient="auto" markerUnits="userSpaceOnUse">'+
+  '<path d="M3,3 L8,6 L3,9" fill="none" stroke="context-stroke" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></marker>';
+
+// #
+// data
+
+async function load(){
+  try{
+    const r = await fetch(API + "/system/map", {cache:"no-store"});
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    MAP = await r.json();
+    render();
+  }catch(e){ console.error("load failed", e); }
+}
+
+function place(id,x,y){ const b=boxes[id]; if(!b)return; b.x=x;b.y=y;b.el.style.left=x+"px";b.el.style.top=y+"px"; }
+
+// #
+// geometry
+
+function hpath(a,b){
+  const dir = b.x >= a.x ? 1 : -1;
+  const ax = a.x + dir*STUB, bx = b.x - dir*STUB;
+  const c = Math.max(40, Math.abs(bx-ax)*0.5);
+  return `M ${a.x} ${a.y} L ${ax} ${a.y} C ${ax+dir*c} ${a.y}, ${bx-dir*c} ${b.y}, ${bx} ${b.y} L ${b.x} ${b.y}`;
+}
+// 방향 자동: 가로 우세면 hpath, 세로 우세면 세로 stub + 베지어(짧은 내부 연결용)
+function gpath(a,b){
+  if(Math.abs(b.x-a.x) >= Math.abs(b.y-a.y)) return hpath(a,b);
+  const dir = b.y >= a.y ? 1 : -1;
+  const ay = a.y + dir*STUB, by = b.y - dir*STUB;
+  const c = Math.max(14, Math.abs(by-ay)*0.5);
+  return `M ${a.x} ${a.y} L ${a.x} ${ay} C ${a.x} ${ay+dir*c}, ${b.x} ${by-dir*c}, ${b.x} ${by} L ${b.x} ${b.y}`;
+}
+function edgeEl(d, color, uc){
+  const p = document.createElementNS("http://www.w3.org/2000/svg","path");
+  p.setAttribute("class","edge"); p.setAttribute("d",d); p.setAttribute("stroke",color);
+  if(uc) p.dataset.uc = uc;
+  svg.appendChild(p); return p;
+}
+function mkCard(html, cls){
+  const el = document.createElement("div");
+  el.className = cls + " node"; el.innerHTML = html;
+  mount.appendChild(el); return el;
+}
+
+// #
+// render
+
+function render(){
+  document.body.classList.add("lab");
+  renderLabDoc();
+}
+
+const METHOD_CAT = {GET:"read", POST:"create", PUT:"update", PATCH:"update", DELETE:"delete"};
+function methodCat(m){ return METHOD_CAT[m] || "neutral"; }
+const AGG_ORDER = ["system","auth","account","team","secret"];
+function aggSort(a,b){ const ia=AGG_ORDER.indexOf(a), ib=AGG_ORDER.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib); }
+
+function groupEndpoints(){
+  const g = {};
+  for(const e of (MAP.endpoints||[])){ const k=e.handler.split(".")[0]; (g[k]=g[k]||[]).push(e); }
+  return g;
+}
+
+// #
+// lab — endpoint → usecase → domain → db (L5)
+
+function epInputs(ep){
+  const u = MAP.usecases.find(x=>x.name===ep.usecase);
+  if(!u) return [];
+  const val = {}; (u.validations||[]).forEach(v => val[v.field] = v.vo);
+  return (u.input||[]).map(f => ({name:f, vo:val[f]||null}));
+}
+function pathBoxed(path){ return path.replace(/(\{[^}]+\})/g, '<span class="pp">$1</span>'); }
+
+function eventOf(entity){ return (MAP.events || []).find(e => e.entity===entity); }
+
+// usecase 카드 input — name (type 은 내부 VO 라 생략)
+function inputRows(ins){
+  return ins.length
+    ? `<div class="inputs">${ins.map(f => `<div class="irow" data-f="${f.name}"><span class="n">${f.name}</span></div>`).join("")}</div>`
+    : `<div class="none">—</div>`;
+}
+
+// endpoint 카드 input — name + kind chip(path/query/body) (type 생략)
+function endpointInputRows(inputs){
+  return inputs.length
+    ? `<div class="inputs">${inputs.map(f => `<div class="irow" data-f="${f.name}"><span class="n">${f.name}<span class="k k-${f.kind}">${f.kind}</span></span></div>`).join("")}</div>`
+    : `<div class="none">—</div>`;
+}
+
+// endpoint 카드 — method + path + auth + HTTP input(path/query/body)
+function endpointCard(ep){
+  const auth = ep.auth ? `<span class="authb auth-${ep.auth}">${ep.auth}</span>` : "";
+  return mkCard(
+    `<div class="hd"><span class="m" style="color:${CAT[methodCat(ep.method)]}">${ep.method}</span>`+
+    `<span class="path">${pathBoxed(ep.path)}</span>${auth}</div>`+
+    `<div class="bd"><div class="lbl">inputs</div>${endpointInputRows(ep.inputs || [])}</div>`, "card lvl-endpoint");
+}
+
+// usecase 카드 — 이름 / input(요청 입력) / output(Output 반환 키). 우측 부가정보 없음
+function usecaseCard(ep){
+  const u = MAP.usecases.find(x => x.name===ep.usecase);
+  const outs = (u && u.output) ? u.output.map(o => o.key) : [];
+  const outRows = outs.length
+    ? `<div class="inputs">${outs.map(k => `<div class="irow" data-f="${k}"><span class="n">${k}</span></div>`).join("")}</div>`
+    : `<div class="none">—</div>`;
+  return mkCard(
+    `<div class="hd"><span class="ttl">${ep.usecase}</span></div>`+
+    `<div class="bd">`+
+      `<div class="lbl">input</div>${inputRows(epInputs(ep))}`+
+      `<div class="lbl div">output</div>${outRows}`+
+    `</div>`, "card lvl-usecase");
+}
+
+// step 필드 출처: input.x / var.attr / [ctx]
+function srcLabel(src){
+  if(!src) return "";
+  if(src.kind==="input") return `<span class="s-in">◄ input.${src.name}</span>`;
+  if(src.kind==="var") return `<span class="s-var">◄ ${src.var}.${src.attr}</span>`;
+  if(src.kind==="param") return `<span class="s-ctx">[ctx]</span>`;
+  return "";
+}
+
+function aggregate(repo){ return repo.replace(/Repository$/,"").replace(/([a-z0-9])([A-Z])/g,"$1_$2").toLowerCase(); }
+
+// domain 행 분해: table(전체 컬럼) / touched(이 동작이 건드린 필드) / event(matched records)
+function decomposeStep(s, emitRecords){
+  const agg = aggregate(s.repo);
+  return {
+    s, agg,
+    table: (MAP.repo_tables || {})[s.repo] || agg,
+    touched: new Set((s.fields || []).map(f => f.name)),
+    records: emitRecords.filter(r => r.split(".")[0] === agg.replace(/_/g,"")),
+  };
+}
+
+// 도메인 동작 in/out — repo 별 {inputs:[{name,src}], outputs:{attr → 소비 table Set}}
+function domainOps(u){
+  const bind = u.bindings || {}, rt = MAP.repo_tables || {};
+  const ops = {};
+  (u.flow || []).forEach(st => {
+    if(!st.repo) return;
+    const e = ops[st.repo] || (ops[st.repo] = {inputs:[], outputs:{}});
+    (st.fields || []).forEach(f => { if(f.src) e.inputs.push({name:f.name, src:f.src}); });
+  });
+  (u.flow || []).forEach(st => (st.fields || []).forEach(f => {
+    if(f.src && f.src.kind==="var" && ops[bind[f.src.var]]){
+      const o = ops[bind[f.src.var]].outputs;
+      (o[f.src.attr] = o[f.src.attr] || new Set()).add(rt[st.repo] || aggregate(st.repo));
+    }
+  }));
+  return ops;
+}
+
+// domain 카드 — 이름 / input / repository(op, L5 한정) / output. L5 우측엔 별도 DB 노드(메서드)
+function cDomain(table, op, st){
+  op = op || {inputs:[], outputs:{}};
+  const row = (sec, name, extra) => `<div class="iorow" data-sec="${sec}" data-f="${name}"><span class="ion">${name}</span>${extra||''}</div>`;
+  const grp = (sec, rows) => rows.length ? `<div class="iogrp">${rows.join("")}</div>` : `<div class="ionone">—</div>`;
+  const domIn = grp("in", op.inputs.map(f => row("in", f.name)));
+  const outKeys = Object.keys(op.outputs);
+  const domOut = grp("out", outKeys.map(n => row("out", n, `<span class="s-var">▸ ${[...op.outputs[n]].join(", ")}</span>`)));
+
+  const inSec = `<div class="iolbl">input</div>${domIn}`;
+  const outSec = `<div class="iolbl div">output</div>${domOut}`;
+
+  // L5 — input / repository(이중모달) / output 세로 스택. 구분선 + 세로 간격.
+  if(LAYOUT === "L5" && st){
+    const o = st.op || "neutral";
+    const inNames = op.inputs.map(f => f.name);
+    let outNames = outKeys.slice();
+    if(!outNames.length && o === "create"){
+      const t = MAP.tables.find(x => x.name===table);
+      const pk = t && t.columns.find(c => c.pk);
+      if(pk) outNames = [pk.name];
+    }
+    const repoBlock =
+      `<div class="repoblock">`+
+        `<div class="rbhd">repository <span class="rop" style="background:${CAT[o]}">${o.toUpperCase()}</span></div>`+
+        `<div class="iolbl">in</div>${grp("rin", inNames.map(n => row("rin", n)))}`+
+        `<div class="iolbl">out</div>${grp("rout", outNames.map(n => row("rout", n)))}`+
+      `</div>`;
+    return mkCard(
+      `<div class="hd"><span class="ttl">${table}</span></div>`+
+      `<div class="bd">${inSec}${repoBlock}${outSec}</div>`, "card lvl-domain");
+  }
+  return mkCard(
+    `<div class="hd"><span class="ttl">${table}</span></div>`+
+    `<div class="bd">${inSec}${outSec}</div>`, "card lvl-domain");
+}
+
+// L5 우측 DB 부속 노드 — 데이터베이스 원기둥 아이콘 + "DB"
+function cDbNode(){
+  return mkCard(
+    `<div class="dbn">`+
+      `<svg class="dbi" viewBox="0 0 14 16" width="13" height="15">`+
+        `<path d="M1 3.2 C1 1.5 3.7 0.7 7 0.7 C10.3 0.7 13 1.5 13 3.2 L13 12.8 C13 14.5 10.3 15.3 7 15.3 C3.7 15.3 1 14.5 1 12.8 Z" fill="#475569" stroke="#cbd5e1" stroke-width="1"/>`+
+        `<ellipse cx="7" cy="3.2" rx="6" ry="2.5" fill="#64748b" stroke="#cbd5e1" stroke-width="1"/>`+
+      `</svg>`+
+      `<span class="dbm">DB</span>`+
+    `</div>`, "card dbnode");
+}
+function cRepo(s){
+  const op = s.op || "neutral";
+  const body = s.fields.length
+    ? `<div class="inputs">${s.fields.map(f => `<div class="irow" data-f="${f.name}"><span class="n">${f.name}</span><span class="t">${srcLabel(f.src)}</span></div>`).join("")}</div>`
+    : `<div class="none">${s.method || s.label}</div>`;
+  return mkCard(
+    `<div class="hd"><span class="op" style="background:${CAT[op]}">${op.toUpperCase()}</span><span class="ttl">${s.method || ''}</span></div>`+
+    `<div class="bd">${body}</div>`, "card lvl-repo");
+}
+function cEvent(records, agg){
+  const ev = eventOf(agg);
+  const kinds = (ev && ev.kinds.length)
+    ? `<div class="evk">${ev.kinds.map(k => `<span class="kd${records.some(r => r.endsWith("."+k))?" on":""}">${k}</span>`).join("")}</div>` : "";
+  const payload = (ev && ev.payload.length) ? `<div class="evp">payload · ${ev.payload.join(", ")}</div>` : "";
+  const body = kinds || payload;
+  return mkCard(
+    `<div class="hd"><span class="ic">⚡</span><span class="ttl">${records.join(", ")}</span></div>`+
+    (body ? `<div class="bd">${body}</div>` : ""), "card lvl-event" + (body ? "" : " solo"));
+}
+
+// 필드 행 앵커 — sec(in/out/rin/rout) 로 구역 한정. repo 구역은 중첩 블록 가장자리를 x 로.
+function fieldAnchor(boxId, field, side, sec){
+  const box = boxes[boxId]; if(!box) return null;
+  const sel = sec ? `[data-sec="${sec}"][data-f="${field}"]` : `[data-f="${field}"]`;
+  const r = box.el.querySelector(sel); if(!r) return null;
+  return {x: side === "r" ? box.x + box.w : box.x, y: box.y + r.offsetTop + r.offsetHeight/2};
+}
+
+// 타깃 필드 행의 카드 내 상하 위치 — 레이어 내부 순차(위→아래) 정렬 키
+function connRowTop(c){
+  const box = boxes[c.to]; if(!box) return 0;
+  const row = box.el.querySelector('[data-f="'+c.tf+'"]');
+  return row ? row.offsetTop : 0;
+}
+// 필드 연결 — input 은 usecase→domain, var 는 producer domain→consumer domain 직결
+function rowConnections(r){
+  const conns = [];
+  const fm = r.ep.field_map || {};
+  for(const uf in fm) conns.push({kind:"fm", from:r.eId, ff:fm[uf], to:r.uId, tf:uf});
+  if(r.u){
+    const bind = r.u.bindings || {};
+    const domCard = {};
+    r.rows.forEach(d => { if(d.s.repo) domCard[d.s.repo] = d.dId; });
+    r.rows.forEach(d => {
+      (d.s.fields || []).forEach(f => {
+        if(!f.src) return;
+        if(f.src.kind==="input") conns.push({kind:"input", from:r.uId, ff:f.src.name, to:d.dId, tf:f.name, tsec:"in"});
+        else if(f.src.kind==="var"){
+          const prod = domCard[bind[f.src.var]];
+          if(prod) conns.push({kind:"var", from:prod, ff:f.src.attr, fsec:"out", to:d.dId, tf:f.name, tsec:"in"});
+        }
+      });
+    });
+  }
+  return conns;
+}
+
+// 출발→도착 그려지는 애니메이션(stroke-dashoffset) + 필드마다 시차 (WAAPI: delay 확실)
+// startK 부터 시차 누적, 다음 시작 인덱스 반환(여러 단계 이어 그리기)
+function drawConns(conns, startK){
+  let k = startK || 0;
+  conns.forEach(c => {
+    const fb = boxes[c.from], tb = boxes[c.to];
+    if(!fb || !tb) return;
+    // 타깃이 오른쪽이면 source 우측·target 좌측, 왼쪽이면 반대 — 각 필드 좌/우 모두 연결
+    const toRight = (tb.x + tb.w/2) >= (fb.x + fb.w/2);
+    const a = fieldAnchor(c.from, c.ff, toRight ? "r" : "l", c.fsec), b = fieldAnchor(c.to, c.tf, toRight ? "l" : "r", c.tsec);
+    if(!a || !b) return;
+    if(toRight){ a.x += 5; b.x -= 7; } else { a.x -= 5; b.x += 7; }
+    const p = edgeEl(hpath(a, b), destColor(c.to), null);
+    p.classList.add("fedge");
+    p.style.strokeWidth = "1.2";
+    p.setAttribute("marker-end", "url(#arrf)");
+    const len = p.getTotalLength();
+    p.style.strokeDasharray = len;
+    p.animate(
+      [{strokeDashoffset: len, opacity: 0}, {strokeDashoffset: 0, opacity: 1}],
+      {duration: 300, delay: k * 90, easing: "ease", fill: "both"}
+    );
+    k++;
+  });
+  return k;
+}
+
+// domain↔domain 필드 계보(var) — 도메인 열 한쪽 채널에 부드러운 베지어 bow. hover 시 가장 마지막에 그려짐.
+// side "l"(L2·L3) 또는 "r"(L5). startK 부터 시차 누적.
+function drawVarBus(varConns, side, startK){
+  const right = side === "r";
+  varConns.forEach((c, i) => {
+    const a = fieldAnchor(c.from, c.ff, side, c.fsec), b = fieldAnchor(c.to, c.tf, side, c.tsec);
+    if(!a || !b) return;
+    const bulge = 36 + i*18, dir = right ? 1 : -1;
+    if(right){ a.x += 2; b.x += 2; } else { a.x -= 2; b.x -= 2; }
+    const cx = right ? Math.max(a.x, b.x) + bulge : Math.min(a.x, b.x) - bulge;
+    const ax = a.x + dir*STUB, bx = b.x + dir*STUB;
+    const d = `M ${a.x} ${a.y} L ${ax} ${a.y} C ${cx} ${a.y}, ${cx} ${b.y}, ${bx} ${b.y} L ${b.x} ${b.y}`;
+    const p = edgeEl(d, "#6366f1", null);
+    p.classList.add("vbus");
+    p.style.strokeWidth = "1.1";
+    p.setAttribute("marker-end", "url(#arrf)");
+    const len = p.getTotalLength();
+    p.style.strokeDasharray = len;
+    p.animate(
+      [{strokeDashoffset: len, opacity: 0}, {strokeDashoffset: 0, opacity: 1}],
+      {duration: 300, delay: ((startK || 0) + i) * 90, easing: "ease", fill: "both"}
+    );
+  });
+}
+
+// 단발 필드 화살표(애니메이션) — DB 노드 ↔ domain field
+function dbEdge(a, b, color, k){
+  const p = edgeEl(gpath(a, b), color, null);
+  p.classList.add("fedge");
+  p.style.strokeWidth = "1.2";
+  p.setAttribute("marker-end", "url(#arrf)");
+  const len = p.getTotalLength();
+  p.style.strokeDasharray = len;
+  p.animate(
+    [{strokeDashoffset: len, opacity: 0}, {strokeDashoffset: 0, opacity: 1}],
+    {duration: 300, delay: k * 90, easing: "ease", fill: "both"}
+  );
+}
+
+// 한쪽 gutter 로 가로 진출하는 bow (a,b 같은 변끝 → 바깥쪽으로 부풀려 연결)
+function bowEdge(a, b, side, color, k){
+  const right = side === "r", dir = right ? 1 : -1, bulge = 20;
+  const cx = right ? Math.max(a.x, b.x) + bulge : Math.min(a.x, b.x) - bulge;
+  a.x += dir*2; b.x += dir*2;
+  const ax = a.x + dir*STUB, bx = b.x + dir*STUB;
+  const p = edgeEl(`M ${a.x} ${a.y} L ${ax} ${a.y} C ${cx} ${a.y}, ${cx} ${b.y}, ${bx} ${b.y} L ${b.x} ${b.y}`, color, null);
+  p.classList.add("fedge"); p.style.strokeWidth = "1.2"; p.setAttribute("marker-end", "url(#arrf)");
+  const len = p.getTotalLength(); p.style.strokeDasharray = len;
+  p.animate([{strokeDashoffset:len,opacity:0},{strokeDashoffset:0,opacity:1}], {duration:300, delay:k*90, easing:"ease", fill:"both"});
+}
+
+// L5 — input→repo in(우 gutter) / repo in→DB(우) / repo out→domain output(좌 gutter). hover 시. (teal)
+function drawRepoArrows(r, startK){
+  let k = startK || 0;
+  const teal = LAYERC.repo;
+  r.rows.forEach(d => {
+    const db = boxes[d.rId], dom = boxes[d.dId];
+    if(!db || !dom) return;
+    const dbY = db.y + db.h/2;
+    const fields = sec => [...dom.el.querySelectorAll(`[data-sec="${sec}"]`)].map(e => e.dataset.f);
+    const hasIn = new Set(fields("in")), hasOut = new Set(fields("out"));
+    // 1. domain input → repository in : 우측 gutter 로 가로 진출
+    fields("rin").forEach(name => {
+      if(!hasIn.has(name)) return;
+      const a = fieldAnchor(d.dId, name, "r", "in"), b = fieldAnchor(d.dId, name, "r", "rin");
+      if(a && b) bowEdge(a, b, "r", teal, k++);
+    });
+    // 2. repository in → DB : 시작점을 카드 우측보다 더 오른쪽으로 띄워 들어오는(input→repo) 화살촉과 분리
+    fields("rin").forEach(name => {
+      const a = fieldAnchor(d.dId, name, "r", "rin"); if(!a) return;
+      const sx = a.x + 34, b = {x: db.x - 7, y: dbY};
+      const lx = sx + 30, c = Math.max(30, (b.x - lx) * 0.5);
+      const p = edgeEl(`M ${sx} ${a.y} L ${lx} ${a.y} C ${lx+c} ${a.y}, ${b.x-c} ${b.y}, ${b.x} ${b.y}`, LAYERC.db, null);
+      p.classList.add("fedge"); p.style.strokeWidth = "1.2"; p.setAttribute("marker-end", "url(#arrf)");
+      const len = p.getTotalLength(); p.style.strokeDasharray = len;
+      p.animate([{strokeDashoffset:len, opacity:0}, {strokeDashoffset:0, opacity:1}], {duration:300, delay:(k++)*90, easing:"ease", fill:"both"});
+    });
+    // 3. repository out → domain output : 좌측 gutter 로 가로 진출
+    fields("rout").forEach(name => {
+      if(!hasOut.has(name)) return;
+      const a = fieldAnchor(d.dId, name, "l", "rout"), b = fieldAnchor(d.dId, name, "l", "out");
+      if(a && b) bowEdge(a, b, "l", teal, k++);
+    });
+  });
+  return k;
+}
+
+// 목적지 레이어별 화살표 색 — 도착 카드 종류로 결정(화살촉은 context-stroke 로 동색)
+const LAYERC = {uc:"#94a3b8", dom:"#6366f1", repo:"#14b8a6", ev:"#f59e0b", db:"#0ea5e9"};
+function destColor(toId){ return LAYERC[boxes[toId] && boxes[toId].kind] || "#b9c0cc"; }
+
+// 헤더 중앙선(y+18)에서 수평 화살표
+function mainArrow(fromId, toId){
+  const f = boxes[fromId], t = boxes[toId];
+  const a = {x: f.x + f.w + 5, y: f.y + 18}, b = {x: t.x - 7, y: t.y + 18};
+  const e = edgeEl(hpath(a, b), destColor(toId), null);
+  e.setAttribute("marker-end", "url(#arr)");
+  e.style.strokeWidth = "1.4";
+  e.style.strokeLinecap = "round";
+  return e;
+}
+
+// 세로/대각 화살표 — domain ↓ repository ↓ event. 목적지 x 가 다르면 S 커브로 분기(우하향)
+function vArrow(fromId, toId){
+  const f = boxes[fromId], t = boxes[toId];
+  const a = {x: f.x + 26, y: f.y + f.h + 2}, b = {x: t.x + 26, y: t.y - 6};
+  const ay = a.y + STUB, by = b.y - STUB;
+  const c = Math.max(14, (by - ay) * 0.5);
+  const e = edgeEl(`M ${a.x} ${a.y} L ${a.x} ${ay} C ${a.x} ${ay+c}, ${b.x} ${by-c}, ${b.x} ${by} L ${b.x} ${b.y}`, destColor(toId), null);
+  e.setAttribute("marker-end", "url(#arr)");
+  e.style.strokeWidth = "1.4";
+  e.style.strokeLinecap = "round";
+  return e;
+}
+
+const ARROW = 96, GY = 28, EX = 4, VGAP = 48, RGAP = 22, STUB = 9;
+
+// 블로그 문서 — endpoint 마다 섹션(제목=path). layer 별 너비는 모든 API 통일(생략 없음)
+function renderLabDoc(){
+  const doc = document.getElementById("doc");
+  doc.innerHTML = "";
+  boxes = {};
+  const defs = document.createElementNS(SVGNS, "svg");
+  defs.setAttribute("width", "0"); defs.setAttribute("height", "0");
+  defs.style.position = "absolute"; defs.innerHTML = MARKER_DEFS;
+  doc.appendChild(defs);
+
+  const groups = groupEndpoints();
+  const ordered = [];
+  Object.keys(groups).sort(aggSort).forEach(k => groups[k].forEach(e => ordered.push(e)));
+
+  buildTOC(ordered, doc);
+
+  // phase 1: 섹션 + 카드 생성 (자연 너비)
+  const secs = ordered.map((ep, i) => buildSection(ep, i, doc));
+
+  // phase 2: layer 별 최대 자연 너비
+  const lw = {ep:0, uc:0, dom:0, repo:0, ev:0};
+  secs.forEach(r => {
+    lw.ep = Math.max(lw.ep, boxes[r.eId].el.offsetWidth);
+    if(r.uId) lw.uc = Math.max(lw.uc, boxes[r.uId].el.offsetWidth);
+    r.rows.forEach(d => {
+      lw.dom = Math.max(lw.dom, boxes[d.dId].el.offsetWidth);
+      lw.repo = Math.max(lw.repo, boxes[d.rId].el.offsetWidth);
+      if(d.vId) lw.ev = Math.max(lw.ev, boxes[d.vId].el.offsetWidth);
+    });
+  });
+
+  // phase 3: 너비 통일 적용 + 배치
+  secs.forEach(r => layoutRow(r, lw));
+}
+
+function buildTOC(ordered, doc){
+  const top = document.createElement("div"); top.className = "top";
+  top.innerHTML =
+    `<h1 class="title">Map</h1>`+
+    `<div class="toc-h">Contents</div>`+
+    `<nav class="toc">`+
+      ordered.map((ep, i) =>
+        `<a class="toc-i" data-sec="sec-${i}"><span class="m" style="color:${CAT[methodCat(ep.method)]}">${ep.method}</span>${pathBoxed(ep.path)}</a>`
+      ).join("")+
+    `</nav>`;
+  doc.appendChild(top);
+  top.querySelectorAll(".toc-i").forEach(a => {
+    a.addEventListener("click", () => {
+      const t = document.getElementById(a.dataset.sec);
+      if(t) t.scrollIntoView({behavior:"smooth", block:"start"});
+    });
+  });
+}
+
+function buildSection(ep, i, doc){
+  const sec = document.createElement("section"); sec.className = "sec"; sec.id = "sec-"+i;
+  const h = document.createElement("h2");
+  h.innerHTML = `<span class="m" style="color:${CAT[methodCat(ep.method)]}">${ep.method}</span> ${pathBoxed(ep.path)}`+
+    (ep.usecase ? ` <span class="uc">${ep.usecase}</span> <button class="undo" title="화살표 취소" aria-label="화살표 취소">↺</button>` : "");
+  sec.appendChild(h);
+  const dia = document.createElement("div"); dia.className = "diagram";
+  const inner = document.createElement("div"); inner.className = "inner";
+  const s = document.createElementNS(SVGNS, "svg");
+  s.style.position = "absolute"; s.style.top = "0"; s.style.left = "0";
+  s.style.overflow = "visible"; s.style.pointerEvents = "none";
+  inner.appendChild(s); dia.appendChild(inner); sec.appendChild(dia); doc.appendChild(sec);
+
+  mount = inner; svg = s;
+  const eEl = endpointCard(ep), eId = "ep:"+i;
+  boxes[eId] = {el:eEl, x:0, y:0, w:eEl.offsetWidth, h:eEl.offsetHeight, kind:"ep"};
+  let uId = null, u = null;
+  const rows = [];
+  if(ep.usecase){
+    const uEl = usecaseCard(ep); uId = "uc:"+i;
+    boxes[uId] = {el:uEl, x:0, y:0, w:uEl.offsetWidth, h:uEl.offsetHeight, kind:"uc"};
+    u = MAP.usecases.find(x => x.name===ep.usecase);
+    const ops = u ? domainOps(u) : {};
+    const flow = (u ? u.flow : []).filter(st => st.repo || st.fields.length || st.event);
+    const emit = flow.find(st => st.event);
+    const emitRecords = emit ? (emit.event.records || []) : [];
+    flow.filter(st => !st.event && st.repo).forEach((st, j) => {
+      const d = decomposeStep(st, emitRecords);
+      const dId = "d:"+i+":"+j;
+      boxes[dId] = {el:cDomain(d.table, ops[st.repo], st), x:0, y:0, w:0, h:0, kind:"dom"};
+      const rId = "r:"+i+":"+j;
+      boxes[rId] = {el:cRepo(st), x:0, y:0, w:0, h:0, kind:"repo"};
+      let vId = null;
+      if(d.records.length){
+        vId = "v:"+i+":"+j;
+        boxes[vId] = {el:cEvent(d.records, d.agg), x:0, y:0, w:0, h:0, kind:"ev"};
+      }
+      rows.push({s:st, dId, rId, vId, io: ops[st.repo]});
+    });
+  }
+  return {ep, inner, svgEl:s, eId, uId, u, rows};
+}
+
+function setW(id, w){ const b = boxes[id]; b.el.style.width = w + "px"; b.w = w; b.h = b.el.offsetHeight; }
+
+function layerLabel(x, y, text){
+  const el = document.createElement("div");
+  el.className = "llabel"; el.textContent = text;
+  el.style.left = x + "px"; el.style.top = y + "px";
+  mount.appendChild(el);
+}
+
+function layoutRow(r, lw){
+  mount = r.inner; svg = r.svgEl;
+  setW(r.eId, lw.ep);
+  const ux = EX + lw.ep + ARROW;
+
+  if(!r.uId){ place(r.eId, EX, GY); layerLabel(EX, 0, "endpoint"); sizeDiagram(r.inner, r.svgEl, [r.eId]); return; }
+  setW(r.uId, lw.uc);
+  const domOnly = (LAYOUT === "L5");
+  r.rows.forEach(d => {
+    setW(d.dId, lw.dom);
+    if(domOnly){
+      if(d.vId) boxes[d.vId].el.style.display = "none";
+      boxes[d.rId].el.remove();
+      const db = cDbNode();
+      boxes[d.rId] = {el:db, x:0, y:0, w:db.offsetWidth, h:db.offsetHeight, kind:"db"};
+    } else {
+      setW(d.rId, lw.repo); if(d.vId) setW(d.vId, lw.ev);
+    }
+  });
+
+  place(r.eId, EX, GY);
+  layerLabel(EX, 0, "endpoint");
+  layerLabel(ux, 0, "usecase");
+  const chev = layoutL5(r, lw, ux);
+
+  const ids = [r.eId, r.uId];
+  r.rows.forEach(d => { ids.push(d.dId); ids.push(d.rId); if(!domOnly && d.vId) ids.push(d.vId); });
+  const conns = rowConnections(r);
+  const order = {}; ids.forEach((cid, idx) => order[cid] = idx);
+  const sortC = list => list.slice().sort((a, b) => (order[a.to] - order[b.to]) || (connRowTop(a) - connRowTop(b)));
+  const sv = r.svgEl;
+
+  // domain 세로열(L2·L3·L5)은 var 를 bow 로. L5 의 domain→domain 은 우측-우측(req).
+  const varC = conns.filter(c => c.kind === "var");
+
+  // API 섹션: 한 번 hover 되면 그 상태 지속(재hover 무시). 되돌리기로 풀면 다시 hover 가능.
+  const nonVar = sortC(conns.filter(c => c.kind !== "var"));
+  const clearSec = () => sv.querySelectorAll(".fedge, .vbus").forEach(e => e.remove());
+  let shown = false;
+  r.inner.addEventListener("mouseenter", () => {
+    if(shown) return;
+    shown = true;
+    svg = sv; chev.forEach(e => e.style.opacity = "0.16");
+    clearSec();
+    let k = drawConns(nonVar, 0);
+    k = drawRepoArrows(r, k);
+    drawVarBus(varC, "r", k);
+  });
+  // 제목 우측 되돌리기 버튼 — 화살표 취소 + 흐름선 복원 + 상태 해제(다시 hover 가능)
+  const undoBtn = r.inner.closest(".sec").querySelector(".undo");
+  if(undoBtn) undoBtn.onclick = () => { shown = false; chev.forEach(e => e.style.opacity = ""); clearSec(); };
+  sizeDiagram(r.inner, r.svgEl, ids);
+}
+
+// L5 — domain 세로 1열, 우측에 DB 부속 노드(메서드). domain↔domain 계보는 좌측 채널.
+function layoutL5(r, lw, ux){
+  const DX = ux + lw.uc + ARROW;
+  const dbX = DX + lw.dom + ARROW + 130;   // repo→DB 화살표 전용 여백(다른 화살표와 분리)
+  const ys = []; let yy = GY;
+  r.rows.forEach(d => { ys.push(yy); yy += Math.max(boxes[d.dId].h, boxes[d.rId].h) + RGAP; });
+  const blockH = Math.max(boxes[r.eId].h, boxes[r.uId].h, (yy - RGAP) - GY);
+  place(r.eId, EX, GY + (blockH - boxes[r.eId].h)/2);
+  place(r.uId, ux, GY + (blockH - boxes[r.uId].h)/2);
+  const chev = [mainArrow(r.eId, r.uId)];
+  r.rows.forEach((d, j) => {
+    place(d.dId, DX, ys[j]);
+    chev.push(mainArrow(r.uId, d.dId));
+    place(d.rId, dbX, ys[j] + (boxes[d.dId].h - boxes[d.rId].h)/2);
+    chev.push(mainArrow(d.dId, d.rId));
+  });
+  if(r.rows.length){ layerLabel(DX, 0, "domain"); layerLabel(dbX, 0, "db"); }
+  return chev;
+}
+
+function sizeDiagram(inner, svgEl, ids, padR){
+  let maxR = padR || 0, maxB = 0;
+  ids.forEach(id => { const b = boxes[id]; maxR = Math.max(maxR, b.x+b.w); maxB = Math.max(maxB, b.y+b.h); });
+  inner.style.width = (maxR + 10) + "px";
+  inner.style.height = (maxB + 10) + "px";
+  svgEl.setAttribute("width", maxR + 10);
+  svgEl.setAttribute("height", maxB + 10);
+}
+
+load();
+</script>
+</body>
+</html>
