@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from personal_secret.api.core.usecase import In
 from personal_secret.api.core.usecase import Out
@@ -14,7 +14,7 @@ from personal_secret.api.domain.secret.project import Project
 from personal_secret.api.domain.secret.secret_repository import SecretRepository
 from personal_secret.api.domain.secret.secret_event import SecretEvent
 
-from personal_secret.api.domain.event.event_repository import EventRepository
+from personal_secret.api.domain.event.event.event_repository import EventRepository
 
 from personal_secret.api.infrastructure.database.postgresql.client import db_client
 from personal_secret.api.infrastructure.database.common.session import transactional_session
@@ -42,7 +42,7 @@ class Output(Out):
 # usecase
 
 @typecheck
-async def list_secrets(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> Output:
+async def search(*, session, event_group_id, input: Input, team_id: UUID, account_id: UUID | None = None) -> Output:
     # find
     founds = SecretEvent.read_many(
         secrets=(
@@ -64,18 +64,22 @@ async def list_secrets(*, session, input: Input, team_id: UUID, actor_id: UUID |
         )
     )
 
-    # emit
-    await EventRepository.emit(
-        session=session,
-        events=[event for event, _ in founds],
-        actor_id=actor_id,
-        actor_team_id=team_id,
-    )
-
     # return
-    return Output.new(
+    return Output(
         data=[secret.to_dict() for _, secret in founds],
-        event=None,
+        event=[
+            event.to_dict()
+            for event in (
+                await EventRepository.emit(
+                    session=session,
+                    id=event_group_id,
+                    name="secret_search",
+                    atomics=[event for event, _ in founds],
+                    actor_id=account_id,
+                    actor_team_id=team_id,
+                )
+            )
+        ],
     )
 
 
@@ -96,8 +100,9 @@ async def _main():
     args = _parse_args()
     async with transactional_session(db_client.SessionLocal) as session:
         print(
-            await list_secrets(
+            await search(
                 session=session,
+                event_group_id=uuid4(),
                 input=Input(
                     domain=args.domain,
                     service=args.service,

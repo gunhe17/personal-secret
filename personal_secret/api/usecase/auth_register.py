@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from uuid import uuid4
 
 from personal_secret.api.core.usecase import In
 from personal_secret.api.core.usecase import Out
@@ -22,13 +23,13 @@ from personal_secret.api.domain.team.team_name import TeamName
 from personal_secret.api.domain.team.team_repository import TeamRepository
 from personal_secret.api.domain.team.team_event import TeamEvent
 
-from personal_secret.api.domain.account_team.account_team import AccountTeam
-from personal_secret.api.domain.account_team.role import Role
-from personal_secret.api.domain.account_team.team_locked_key import TeamLockedKey
-from personal_secret.api.domain.account_team.account_team_repository import AccountTeamRepository
-from personal_secret.api.domain.account_team.account_team_event import AccountTeamEvent
+from personal_secret.api.domain.team_access.team_access import TeamAccess
+from personal_secret.api.domain.team_access.role import Role
+from personal_secret.api.domain.team_access.team_locked_key import TeamLockedKey
+from personal_secret.api.domain.team_access.team_access_repository import TeamAccessRepository
+from personal_secret.api.domain.team_access.team_access_event import TeamAccessEvent
 
-from personal_secret.api.domain.event.event_repository import EventRepository
+from personal_secret.api.domain.event.event.event_repository import EventRepository
 
 from personal_secret.api.infrastructure.hash.argon2.client import argon2
 from personal_secret.api.infrastructure.database.postgresql.client import db_client
@@ -45,7 +46,6 @@ class Input(In):
     personal_unlock_salt: str
     login_salt: str
     login_proof: str
-    # team_locked_key = 가입자가 자기 personal team 의 team_key 를 personal_lock 으로 봉인한 것
     team_locked_key: str
 
 
@@ -60,7 +60,7 @@ class Output(Out):
 # usecase
 
 @typecheck
-async def register(*, session, input: Input) -> Output:
+async def register(*, session, event_group_id, input: Input) -> Output:
     # account
     account_event, account = AccountEvent.created(
         account=await AccountRepository.add_unique_by_email(
@@ -88,11 +88,11 @@ async def register(*, session, input: Input) -> Output:
         ),
     )
 
-    # owner membership
-    member_event, _ = AccountTeamEvent.created(
-        membership=await AccountTeamRepository.add_unique_by_account_and_team(
+    # owner team access
+    member_event, _ = TeamAccessEvent.created(
+        team_access=await TeamAccessRepository.add_unique_by_account_and_team(
             session=session,
-            entity=AccountTeam.new(
+            entity=TeamAccess.new(
                 account_id=account.id,
                 team_id=team.id,
                 role=Role.owner(),
@@ -102,7 +102,7 @@ async def register(*, session, input: Input) -> Output:
     )
 
     # return
-    return Output.new(
+    return Output(
         data={
             **account.to_dict(),
             "personal_team_id": str(team.id),
@@ -112,7 +112,9 @@ async def register(*, session, input: Input) -> Output:
             for event in (
                 await EventRepository.emit(
                     session=session,
-                    events=[account_event, team_event, member_event],
+                    id=event_group_id,
+                    name="auth_register",
+                    atomics=[account_event, team_event, member_event],
                 )
             )
         ],
@@ -139,6 +141,7 @@ async def _main():
         print(
             await register(
                 session=session,
+                event_group_id=uuid4(),
                 input=Input(
                     email=args.email,
                     personal_lock=args.personal_lock,

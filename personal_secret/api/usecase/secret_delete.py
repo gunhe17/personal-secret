@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from personal_secret.api.core.usecase import In
 from personal_secret.api.core.usecase import Out
@@ -11,7 +11,7 @@ from personal_secret.api.core.validate import typecheck
 from personal_secret.api.domain.secret.secret_repository import SecretRepository
 from personal_secret.api.domain.secret.secret_event import SecretEvent
 
-from personal_secret.api.domain.event.event_repository import EventRepository
+from personal_secret.api.domain.event.event.event_repository import EventRepository
 
 from personal_secret.api.infrastructure.database.postgresql.client import db_client
 from personal_secret.api.infrastructure.database.common.session import transactional_session
@@ -35,7 +35,7 @@ class Output(Out):
 # usecase
 
 @typecheck
-async def delete(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> Output:
+async def delete(*, session, event_group_id, input: Input, team_id: UUID, account_id: UUID | None = None) -> Output:
     # find
     secret = await SecretRepository.get_by_id(
         session=session,
@@ -54,15 +54,17 @@ async def delete(*, session, input: Input, team_id: UUID, actor_id: UUID | None 
     )
 
     # return
-    return Output.new(
+    return Output(
         data=removed.to_dict(),
         event=[
             event.to_dict()
             for event in (
                 await EventRepository.emit(
                     session=session,
-                    events=[event],
-                    actor_id=actor_id,
+                    id=event_group_id,
+                    name="secret_delete",
+                    atomics=[event],
+                    actor_id=account_id,
                     actor_team_id=team_id,
                 )
             )
@@ -85,6 +87,7 @@ async def _main():
         print(
             await delete(
                 session=session,
+                event_group_id=uuid4(),
                 input=Input(id=args.id),
                 team_id=UUID(args.team_id),
             )

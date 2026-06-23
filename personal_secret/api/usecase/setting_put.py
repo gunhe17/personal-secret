@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 from typing import Any
+from uuid import uuid4
 
 from personal_secret.api.core.usecase import In
 from personal_secret.api.core.usecase import Out
@@ -14,7 +15,7 @@ from personal_secret.api.domain.setting.value import Value
 from personal_secret.api.domain.setting.setting_repository import SettingRepository
 from personal_secret.api.domain.setting.setting_event import SettingEvent
 
-from personal_secret.api.domain.event.event_repository import EventRepository
+from personal_secret.api.domain.event.event.event_repository import EventRepository
 
 from personal_secret.api.infrastructure.database.postgresql.client import db_client
 from personal_secret.api.infrastructure.database.common.session import transactional_session
@@ -39,7 +40,7 @@ class Output(Out):
 # usecase
 
 @typecheck
-async def set_setting(*, session, input: Input) -> Output:
+async def put(*, session, event_group_id, input: Input) -> Output:
     # set
     event, setting = SettingEvent.updated(
         setting=(
@@ -52,14 +53,16 @@ async def set_setting(*, session, input: Input) -> Output:
     )
 
     # return
-    return Output.new(
+    return Output(
         data=setting.to_dict(),
         event=[
             e.to_dict()
             for e in (
                 await EventRepository.emit(
                     session=session,
-                    events=[event],
+                    id=event_group_id,
+                    name="setting_put",
+                    atomics=[event],
                 )
             )
         ],
@@ -79,8 +82,9 @@ async def _main():
     args = _parse_args()
     async with transactional_session(db_client.SessionLocal) as session:
         print(
-            await set_setting(
+            await put(
                 session=session,
+                event_group_id=uuid4(),
                 input=Input(key=args.key, value=json.loads(args.value)),
             )
         )

@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from personal_secret.api.core.usecase import In
 from personal_secret.api.core.usecase import Out
@@ -12,12 +12,12 @@ from personal_secret.api.core.validate import typecheck
 from personal_secret.api.domain.secret.ciphertext import Ciphertext
 from personal_secret.api.domain.secret.secret_repository import SecretRepository
 
-from personal_secret.api.domain.account_team.team_locked_key import TeamLockedKey
-from personal_secret.api.domain.account_team.account_team_repository import AccountTeamRepository
+from personal_secret.api.domain.team_access.team_locked_key import TeamLockedKey
+from personal_secret.api.domain.team_access.team_access_repository import TeamAccessRepository
 
 from personal_secret.api.domain.team.team_event import TeamEvent
 
-from personal_secret.api.domain.event.event_repository import EventRepository
+from personal_secret.api.domain.event.event.event_repository import EventRepository
 
 from personal_secret.api.infrastructure.database.postgresql.client import db_client
 from personal_secret.api.infrastructure.database.common.session import transactional_session
@@ -43,7 +43,7 @@ class Output(Out):
 # usecase
 
 @typecheck
-async def rotate(*, session, input: Input, team_id: UUID, actor_id: UUID | None = None) -> Output:
+async def rotate(*, session, event_group_id, input: Input, team_id: UUID, account_id: UUID | None = None) -> Output:
     # reencrypt
     for id, value in input.secrets.items():
         secret = await SecretRepository.get_by_id(
@@ -57,20 +57,20 @@ async def rotate(*, session, input: Input, team_id: UUID, actor_id: UUID | None 
         )
 
     # rekey
-    for account_id, team_locked_key in input.members.items():
-        membership = await AccountTeamRepository.get_by_account_and_team(
+    for member_account_id, team_locked_key in input.members.items():
+        team_access = await TeamAccessRepository.get_by_account_and_team(
             session=session,
-            account_id=UUID(account_id),
+            account_id=UUID(member_account_id),
             team_id=team_id,
         )
-        await AccountTeamRepository.update(
+        await TeamAccessRepository.update(
             session=session,
-            entity=membership.with_team_locked_key(TeamLockedKey.from_str(team_locked_key)),
+            entity=team_access.with_team_locked_key(TeamLockedKey.from_str(team_locked_key)),
         )
 
     # return
     event, _ = TeamEvent.rotated(team_id=team_id)
-    return Output.new(
+    return Output(
         data={
             "secrets_reencrypted": len(input.secrets),
             "members_rekeyed": len(input.members),
@@ -80,8 +80,10 @@ async def rotate(*, session, input: Input, team_id: UUID, actor_id: UUID | None 
             for e in (
                 await EventRepository.emit(
                     session=session,
-                    events=[event],
-                    actor_id=actor_id,
+                    id=event_group_id,
+                    name="team_rotate",
+                    atomics=[event],
+                    actor_id=account_id,
                     actor_team_id=team_id,
                 )
             )
@@ -104,6 +106,7 @@ async def _main():
         print(
             await rotate(
                 session=session,
+                event_group_id=uuid4(),
                 input=Input(**json.loads(args.payload)),
                 team_id=UUID(args.team_id),
             )
