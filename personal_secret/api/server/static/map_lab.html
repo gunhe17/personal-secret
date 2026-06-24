@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>personal_secret · map</title>
+<title>map · lab — repository 분리(overlap)</title>
 <style>
   :root{
     --bg:#ffffff; --line:#e4e7eb; --fg:#1a1d21;
@@ -44,9 +44,9 @@
   .lvl-domain .ic,.lvl-repo .ic,.lvl-event .ic{color:#cbd5e1}
   .lvl-repo .s-in,.lvl-domain .s-in{color:#7dd3fc}
   .lvl-repo .s-var,.lvl-domain .s-var{color:#86efac}
+  .lvl-repo .s-ctx,.lvl-domain .s-ctx{color:#fcd34d}
   .iorow .s-const{font-size:8.5px;white-space:nowrap;text-align:right;color:#cbd5e1;font-style:italic;opacity:.65}
   .iorow .s-unknown{font-size:9.5px;font-weight:700;text-align:right;color:#f59e0b;cursor:help}
-  .lvl-repo .s-ctx,.lvl-domain .s-ctx{color:#fcd34d}
 
   .iolbl{font-size:8px;letter-spacing:.4px;text-transform:uppercase;color:#94a3b8;margin-bottom:5px}
   .iolbl.div{margin-top:9px;padding-top:8px;border-top:1px solid rgba(255,255,255,.14)}
@@ -140,6 +140,7 @@
 <script>
 let MAP = null;
 const LAYOUT = "L5";
+let VARMODE = "left";   // [lab] 좌측 채널 고정
 const API = new URLSearchParams(location.search).get("api") || "";
 const CAT = {create:"#1a7f37",read:"#2563eb",update:"#b45309",delete:"#b3261e",event:"#7c3aed",neutral:"#9aa0a8"};
 
@@ -204,6 +205,23 @@ function render(){
   renderLabDoc();
 }
 
+// [lab] var 라우팅 모드 전환 툴바
+function ensureModeBar(){
+  if(document.getElementById("modebar")) return;
+  const bar = document.createElement("div");
+  bar.id = "modebar";
+  bar.style.cssText = "position:fixed;top:10px;right:16px;z-index:1000;display:flex;gap:6px;background:#fff;border:1px solid #e4e7eb;border-radius:8px;padding:5px;box-shadow:0 1px 4px rgba(0,0,0,.1);font-family:var(--mono);font-size:11px";
+  const modes = [["stagger","계단식"],["left","좌측 채널"],["right","우측 bus"],["label","라벨만"]];
+  bar.innerHTML = modes.map(([m,label]) => `<button data-m="${m}" style="cursor:pointer;border:1px solid #e4e7eb;border-radius:6px;padding:3px 10px;background:${m===VARMODE?'#dbeafe':'#f8fafc'}">${label}</button>`).join("");
+  document.body.appendChild(bar);
+  bar.addEventListener("click", e => {
+    const m = e.target.dataset.m; if(!m) return;
+    VARMODE = m;
+    [...bar.children].forEach(b => b.style.background = b.dataset.m===m ? "#dbeafe" : "#f8fafc");
+    renderLabDoc();
+  });
+}
+
 const METHOD_CAT = {GET:"read", POST:"create", PUT:"update", PATCH:"update", DELETE:"delete"};
 function methodCat(m){ return METHOD_CAT[m] || "neutral"; }
 const AGG_ORDER = ["system","auth","account","team","secret"];
@@ -242,7 +260,7 @@ function endpointInputRows(inputs){
     : `<div class="none">—</div>`;
 }
 
-// endpoint 카드 — method + path + auth + HTTP input(path/query/body)
+// endpoint 카드 — method + path + auth + HTTP input(path/query/body) + context(주입값)
 function endpointCard(ep){
   const auth = ep.auth ? `<span class="authb auth-${ep.auth}">${ep.auth}</span>` : "";
   const u = MAP.usecases.find(x => x.name===ep.usecase);
@@ -315,47 +333,52 @@ function domainOps(u){
 }
 
 // domain 카드 — 이름 / input / repository(op, L5 한정) / output. L5 우측엔 별도 DB 노드(메서드)
-// 무근원 필드 표기 — const 는 #hard coding(흐림), 출처 미상(src=null)은 ?(hover 설명). 둘 다 들어오는 화살표 없음
-function srcMark(src){
-  if(src && src.kind === "const") return `<span class="s-const">#hard coding</span>`;
-  if(src == null) return `<span class="s-unknown" title="값 출처를 추적하지 못함 — 무근원(루프 변수·복합식 등)">?</span>`;
-  return "";
-}
+// [lab] 상수 출처 — 흐린 이탤릭 + "#hard coding" 주석
+function constLabel(src){ return (src && src.kind === "const") ? `<span class="s-const">#hard coding</span>` : ""; }
+function constDimClass(src){ return (src && src.kind === "const") ? " cdim" : ""; }
+// [lab] 출처 미상(src=null) — ? 마커 + hover 설명
+function unknownMark(src){ return (src === null || src === undefined) ? `<span class="s-unknown" title="값 출처를 추적하지 못함 — 루프 변수·복합식은 호출 인자만으로 못 잡습니다">?</span>` : ""; }
 
 function cDomain(table, op, st){
   op = op || {inputs:[], outputs:{}};
-  const row = (sec, name, extra) => `<div class="iorow" data-sec="${sec}" data-f="${name}"><span class="ion">${name}</span>${extra||''}</div>`;
+  const row = (sec, name, extra, src) => `<div class="iorow${constDimClass(src)}" data-sec="${sec}" data-f="${name}"><span class="ion">${name}</span>${extra||''}</div>`;
   const grp = (sec, rows) => rows.length ? `<div class="iogrp">${rows.join("")}</div>` : `<div class="ionone">—</div>`;
-  const domIn = grp("in", op.inputs.map(f => row("in", f.name, srcMark(f.src))));
+  const domIn = grp("in", op.inputs.map(f => row("in", f.name, constLabel(f.src) + unknownMark(f.src), f.src)));
   const outKeys = Object.keys(op.outputs);
   const domOut = grp("out", outKeys.map(n => row("out", n, "")));
 
   const inSec = `<div class="iolbl">input</div>${domIn}`;
   const outSec = `<div class="iolbl div">output</div>${domOut}`;
 
-  // L5 — input / repository(이중모달) / output 세로 스택. 구분선 + 세로 간격.
+  // [lab] L5 — domain 카드(input/output). repository 는 별도 카드로 domain 뒤에 깔림
   if(LAYOUT === "L5" && st){
-    const o = st.op || "neutral";
-    const inNames = op.inputs.map(f => f.name);
-    let outNames = outKeys.slice();
-    if(!outNames.length && o === "create"){
-      const t = MAP.tables.find(x => x.name===table);
-      const pk = t && t.columns.find(c => c.pk);
-      if(pk) outNames = [pk.name];
-    }
-    const repoBlock =
-      `<div class="repoblock">`+
-        `<div class="rbhd">${st.method || "repository"}</div>`+
-        `<div class="iolbl">in</div>${grp("rin", op.inputs.map(f => row("rin", f.name)))}`+
-        `<div class="iolbl">out</div>${grp("rout", outNames.map(n => row("rout", n)))}`+
-      `</div>`;
     return mkCard(
       `<div class="hd"><span class="ttl">${table}</span></div>`+
-      `<div class="bd">${inSec}${repoBlock}${outSec}</div>`, "card lvl-domain");
+      `<div class="bd">${inSec}${outSec}</div>`, "card lvl-domain");
   }
   return mkCard(
     `<div class="hd"><span class="ttl">${table}</span></div>`+
     `<div class="bd">${inSec}${outSec}</div>`, "card lvl-domain");
+}
+
+// [lab] domain 에서 분리한 repository 카드 — 좌측 일부가 domain 우측 테두리에 걸침
+function cRepoCard(table, op, st){
+  const o = (st && st.op) || "neutral";
+  const inRow = f => `<div class="iorow" data-sec="rin" data-f="${f.name}"><span class="ion">${f.name}</span></div>`;
+  const outRow = n => `<div class="iorow" data-sec="rout" data-f="${n}"><span class="ion">${n}</span></div>`;
+  const inFields = (op.inputs || []);
+  let outNames = Object.keys(op.outputs || {});
+  if(!outNames.length && o === "create"){
+    const t = MAP.tables.find(x => x.name===table);
+    const pk = t && t.columns.find(c => c.pk);
+    if(pk) outNames = [pk.name];
+  }
+  const inHtml = inFields.length ? `<div class="iogrp">${inFields.map(inRow).join("")}</div>` : `<div class="ionone">—</div>`;
+  const outHtml = outNames.length ? `<div class="iogrp">${outNames.map(outRow).join("")}</div>` : `<div class="ionone">—</div>`;
+  return mkCard(
+    `<div class="hd"><span class="ttl">${(st && st.method) || "repository"}</span></div>`+
+    `<div class="bd"><div class="iolbl">in</div>${inHtml}<div class="iolbl div">out</div>${outHtml}</div>`,
+    "card lvl-repo");
 }
 
 // L5 우측 DB 부속 노드 — 데이터베이스 원기둥 아이콘 + "DB"
@@ -460,14 +483,28 @@ function drawConns(conns, startK){
 // domain↔domain 필드 계보(var) — 도메인 열 한쪽 채널에 부드러운 베지어 bow. hover 시 가장 마지막에 그려짐.
 // side "l"(L2·L3) 또는 "r"(L5). startK 부터 시차 누적.
 function drawVarBus(varConns, side, startK){
-  const right = side === "r";
+  if(VARMODE === "label") return (startK || 0);   // 화살표 없이 producer 의 ▸label 로만 계보 표기
   varConns.forEach((c, i) => {
-    const a = fieldAnchor(c.from, c.ff, side, c.fsec), b = fieldAnchor(c.to, c.tf, side, c.tsec);
-    if(!a || !b) return;
-    const bulge = 36 + i*18;
-    if(right){ a.x += 5; b.x += 7; } else { a.x -= 5; b.x -= 7; }
-    const cx = right ? Math.max(a.x, b.x) + bulge : Math.min(a.x, b.x) - bulge;
-    const d = `M ${a.x} ${a.y} C ${cx} ${a.y}, ${cx} ${b.y}, ${b.x} ${b.y}`;
+    let a, b, d;
+    if(VARMODE === "right"){                        // 우측 bus — output.우 → input.우 (원래)
+      a = fieldAnchor(c.from, c.ff, "r", c.fsec); b = fieldAnchor(c.to, c.tf, "r", c.tsec);
+      if(!a || !b) return;
+      a.x += 5; b.x += 7;
+      const cx = Math.max(a.x, b.x) + 36 + i*18;
+      d = `M ${a.x} ${a.y} C ${cx} ${a.y}, ${cx} ${b.y}, ${b.x} ${b.y}`;
+    } else if(VARMODE === "left"){                  // 좌측 채널 — output.좌 → input.좌
+      a = fieldAnchor(c.from, c.ff, "l", c.fsec); b = fieldAnchor(c.to, c.tf, "l", c.tsec);
+      if(!a || !b) return;
+      a.x -= 5; b.x -= 7;
+      const cx = Math.min(a.x, b.x) - (36 + i*18);
+      d = `M ${a.x} ${a.y} C ${cx} ${a.y}, ${cx} ${b.y}, ${b.x} ${b.y}`;
+    } else {                                         // stagger — output.우 → input.좌
+      a = fieldAnchor(c.from, c.ff, "r", c.fsec); b = fieldAnchor(c.to, c.tf, "l", c.tsec);
+      if(!a || !b) return;
+      a.x += 5; b.x -= 7;
+      const dx = Math.max(24, (b.x - a.x) * 0.5);
+      d = `M ${a.x} ${a.y} C ${a.x+dx} ${a.y}, ${b.x-dx} ${b.y}, ${b.x} ${b.y}`;
+    }
     const p = edgeEl(d, "#6366f1", null);
     p.classList.add("vbus");
     p.style.strokeWidth = "1.1";
@@ -508,45 +545,48 @@ function bowEdge(a, b, side, color, k, bendStartX){
   p.animate([{strokeDashoffset:len,opacity:0},{strokeDashoffset:0,opacity:1}], {duration:300, delay:k*90, easing:"ease", fill:"both"});
 }
 
-// L5 — input→repo in(우 gutter) / repo in→DB(우) / repo out→domain output(좌 gutter). hover 시. (teal)
-function drawRepoArrows(r, startK, varIn){
+// [lab] domain INPUT(우측) → repository IN(좌측), repository OUT(좌측) → domain OUTPUT(우측). hover 시.
+function drawRepoArrows(r, startK){
   let k = startK || 0;
   const teal = LAYERC.repo;
-  varIn = varIn || new Set();
+  const fedge = (a, b, color, kk) => {
+    const dir = b.x >= a.x ? 1 : -1;
+    a.x += dir*5; b.x -= dir*7;   // 시작은 source edge+5, 끝은 target edge-7 (drawConns 와 동일)
+    const mx = (a.x + b.x) / 2;
+    const p = edgeEl(`M ${a.x} ${a.y} C ${mx} ${a.y}, ${mx} ${b.y}, ${b.x} ${b.y}`, color, null);
+    p.classList.add("fedge"); p.style.strokeWidth = "1.2"; p.setAttribute("marker-end", "url(#arrf)");
+    const len = p.getTotalLength(); p.style.strokeDasharray = len;
+    p.animate([{strokeDashoffset:len,opacity:0},{strokeDashoffset:0,opacity:1}], {duration:300, delay:kk*90, easing:"ease", fill:"both"});
+  };
   r.rows.forEach(d => {
-    const db = boxes[d.rId], dom = boxes[d.dId];
-    if(!db || !dom) return;
-    const dbY = db.y + db.h/2;
-    const fields = sec => [...dom.el.querySelectorAll(`[data-sec="${sec}"]`)].map(e => e.dataset.f);
-    const hasIn = new Set(fields("in")), hasOut = new Set(fields("out"));
-    // 1. domain input → repository in : 우측 gutter 로 가로 진출
-    // 한 row라도 들어오는 var 화살표와 겹치면, 같은 카드의 모든 bow 출발점을 우측으로 정렬해 띄운다
-    const rinFields = fields("rin").filter(name => hasIn.has(name));
-    const shiftIn = rinFields.some(name => varIn.has(d.dId + ":" + name));
-    rinFields.forEach(name => {
-      const a = fieldAnchor(d.dId, name, "r", "in"), b = fieldAnchor(d.dId, name, "r", "rin");
-      if(!a || !b) return;
-      // 카드에 var 충돌이 있으면 bend 는 +12 기준으로 통일, 시작점은 들어오는 화살표 있는 row 만 +12
-      const bendRef = shiftIn ? a.x + 12 : null;
-      if(shiftIn && varIn.has(d.dId + ":" + name)) a.x += 12;
-      bowEdge(a, b, "r", teal, k++, bendRef);
+    const repo = boxes[d.rId], dom = boxes[d.dId];
+    if(!repo || !dom) return;
+    const domF = sec => [...dom.el.querySelectorAll(`[data-sec="${sec}"]`)].map(e => e.dataset.f);
+    const repoF = sec => [...repo.el.querySelectorAll(`[data-sec="${sec}"]`)].map(e => e.dataset.f);
+    const hasIn = new Set(domF("in")), hasOut = new Set(domF("out"));
+    repoF("rin").forEach(name => {
+      if(!hasIn.has(name)) return;
+      const a = fieldAnchor(d.dId, name, "r", "in"), b = fieldAnchor(d.rId, name, "l", "rin");
+      if(a && b) fedge(a, b, teal, k++);
     });
-    // 2. repository in → DB : 시작점을 카드 우측보다 더 오른쪽으로 띄워 들어오는(input→repo) 화살촉과 분리
-    fields("rin").forEach(name => {
-      const a = fieldAnchor(d.dId, name, "r", "rin"); if(!a) return;
-      const sx = a.x + 34, b = {x: db.x - 7, y: dbY};
-      const lx = sx + 30, c = Math.max(30, (b.x - lx) * 0.5);
-      const p = edgeEl(`M ${sx} ${a.y} L ${lx} ${a.y} C ${lx+c} ${a.y}, ${b.x-c} ${b.y}, ${b.x} ${b.y}`, LAYERC.db, null);
-      p.classList.add("fedge"); p.style.strokeWidth = "1.2"; p.setAttribute("marker-end", "url(#arrf)");
-      const len = p.getTotalLength(); p.style.strokeDasharray = len;
-      p.animate([{strokeDashoffset:len, opacity:0}, {strokeDashoffset:0, opacity:1}], {duration:300, delay:(k++)*90, easing:"ease", fill:"both"});
-    });
-    // 3. repository out → domain output : 좌측 gutter 로 가로 진출
-    fields("rout").forEach(name => {
+    repoF("rout").forEach(name => {
       if(!hasOut.has(name)) return;
-      const a = fieldAnchor(d.dId, name, "l", "rout"), b = fieldAnchor(d.dId, name, "l", "out");
-      if(a && b) bowEdge(a, b, "l", teal, k++);
+      const a = fieldAnchor(d.rId, name, "l", "rout"), b = fieldAnchor(d.dId, name, "r", "out");
+      if(a && b) fedge(a, b, teal, k++);
     });
+    // repository IN(우측) → DB (원기둥) 으로 수렴
+    const db = boxes[d.bId];
+    if(db){
+      const dbY = db.y + db.h/2, bx = db.x - 7;
+      repoF("rin").forEach(name => {
+        const a = fieldAnchor(d.rId, name, "r", "rin"); if(!a) return;
+        const sx = a.x + 5, lx = sx + 24, c = Math.max(28, (bx - lx) * 0.5);
+        const p = edgeEl(`M ${sx} ${a.y} L ${lx} ${a.y} C ${lx+c} ${a.y}, ${bx-c} ${dbY}, ${bx} ${dbY}`, LAYERC.db, null);
+        p.classList.add("fedge"); p.style.strokeWidth = "1.2"; p.setAttribute("marker-end", "url(#arrf)");
+        const len = p.getTotalLength(); p.style.strokeDasharray = len;
+        p.animate([{strokeDashoffset:len,opacity:0},{strokeDashoffset:0,opacity:1}], {duration:300, delay:k++*90, easing:"ease", fill:"both"});
+      });
+    }
   });
   return k;
 }
@@ -673,13 +713,15 @@ function buildSection(ep, i, doc){
       const dId = "d:"+i+":"+j;
       boxes[dId] = {el:cDomain(d.table, opIo, op), x:0, y:0, w:0, h:0, kind:"dom"};
       const rId = "r:"+i+":"+j;
-      boxes[rId] = {el:cRepo(op), x:0, y:0, w:0, h:0, kind:"repo"};
+      boxes[rId] = {el:cRepoCard(d.table, opIo, op), x:0, y:0, w:0, h:0, kind:"repo"};
+      const bId = "b:"+i+":"+j;
+      boxes[bId] = {el:cDbNode(), x:0, y:0, w:0, h:0, kind:"db"};
       let vId = null;
       if(d.records.length){
         vId = "v:"+i+":"+j;
         boxes[vId] = {el:cEvent(d.records, d.agg), x:0, y:0, w:0, h:0, kind:"ev"};
       }
-      rows.push({s:op, dId, rId, vId, io: opIo});
+      rows.push({s:op, dId, rId, bId, vId, io: opIo});
       j++;
     }));
   }
@@ -707,9 +749,8 @@ function layoutRow(r, lw){
     setW(d.dId, lw.dom);
     if(domOnly){
       if(d.vId) boxes[d.vId].el.style.display = "none";
-      boxes[d.rId].el.remove();
-      const db = cDbNode();
-      boxes[d.rId] = {el:db, x:0, y:0, w:db.offsetWidth, h:db.offsetHeight, kind:"db"};
+      setW(d.rId, lw.repo);   // repo 카드 너비 통일 → 우측 edge(=repo→DB 출발점) 정렬
+      const bb = boxes[d.bId]; bb.w = bb.el.offsetWidth; bb.h = bb.el.offsetHeight;
     } else {
       setW(d.rId, lw.repo); if(d.vId) setW(d.vId, lw.ev);
     }
@@ -721,7 +762,7 @@ function layoutRow(r, lw){
   const chev = layoutL5(r, lw, ux);
 
   const ids = [r.eId, r.uId];
-  r.rows.forEach(d => { ids.push(d.dId); ids.push(d.rId); if(!domOnly && d.vId) ids.push(d.vId); });
+  r.rows.forEach(d => { ids.push(d.dId); ids.push(d.rId); if(d.bId) ids.push(d.bId); if(!domOnly && d.vId) ids.push(d.vId); });
   const conns = rowConnections(r);
   const order = {}; ids.forEach((cid, idx) => order[cid] = idx);
   const sortC = list => list.slice().sort((a, b) => (order[a.to] - order[b.to]) || (connRowTop(a) - connRowTop(b)));
@@ -741,7 +782,7 @@ function layoutRow(r, lw){
     svg = sv; chev.forEach(e => e.style.opacity = "0.16");
     clearSec();
     let k = drawConns(nonVar, 0);
-    k = drawRepoArrows(r, k, varIn);
+    k = drawRepoArrows(r, k);
     drawVarBus(varC, "r", k);
   });
   // 제목 우측 되돌리기 버튼 — 화살표 취소 + 흐름선 복원 + 상태 해제(다시 hover 가능)
@@ -753,20 +794,26 @@ function layoutRow(r, lw){
 // L5 — domain 세로 1열, 우측에 DB 부속 노드(메서드). domain↔domain 계보는 좌측 채널.
 function layoutL5(r, lw, ux){
   const DX = ux + lw.uc + ARROW;
-  const dbX = DX + lw.dom + ARROW + 130;   // repo→DB 화살표 전용 여백(다른 화살표와 분리)
+  const RX = DX + lw.dom + ARROW;   // [lab] repository 레이어 — domain 우측 독립 컬럼
+  const repoW = Math.max(0, ...r.rows.map(d => boxes[d.rId].w));
+  const DBX = RX + repoW + ARROW;   // [lab] db 레이어 — repository 우측
   const ys = []; let yy = GY;
   r.rows.forEach(d => { ys.push(yy); yy += Math.max(boxes[d.dId].h, boxes[d.rId].h) + RGAP; });
   const blockH = Math.max(boxes[r.eId].h, boxes[r.uId].h, (yy - RGAP) - GY);
   place(r.eId, EX, GY + (blockH - boxes[r.eId].h)/2);
   place(r.uId, ux, GY + (blockH - boxes[r.uId].h)/2);
+  const STAGGER = VARMODE === "stagger" ? Math.round(lw.dom * 0.6) : 0;   // [lab] 계단식 모드에서만
   const chev = [mainArrow(r.eId, r.uId)];
   r.rows.forEach((d, j) => {
-    place(d.dId, DX, ys[j]);
+    const sx = j * STAGGER;
+    place(d.dId, DX + sx, ys[j]);
     chev.push(mainArrow(r.uId, d.dId));
-    place(d.rId, dbX, ys[j] + (boxes[d.dId].h - boxes[d.rId].h)/2);
+    place(d.rId, RX + sx, ys[j]);   // domain 과 top 정렬 → 같은 필드 row 가 같은 y (화살표 수평)
     chev.push(mainArrow(d.dId, d.rId));
+    place(d.bId, DBX + sx, ys[j] + (boxes[d.rId].h - boxes[d.bId].h)/2);   // DB 는 repo 중앙
+    chev.push(mainArrow(d.rId, d.bId));
   });
-  if(r.rows.length){ layerLabel(DX, 0, "domain"); layerLabel(dbX, 0, "db"); }
+  if(r.rows.length){ layerLabel(DX, 0, "domain"); layerLabel(RX, 0, "repository"); layerLabel(DBX, 0, "db"); }
   return chev;
 }
 

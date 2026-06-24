@@ -4,6 +4,9 @@ import ast
 import re
 from pathlib import Path
 
+from personal_secret.api.infrastructure.map.source import read_source
+from personal_secret.api.infrastructure.map.source import parse_source
+
 
 # #
 # usecase
@@ -30,8 +33,8 @@ def build_usecases() -> list[dict]:
 
 
 def _read_usecase(path: Path) -> dict | None:
-    source = path.read_text()
-    tree = ast.parse(source)
+    source = read_source(path)
+    tree = parse_source(path)
 
     # action
     action = _action_def(tree)
@@ -41,6 +44,7 @@ def _read_usecase(path: Path) -> dict | None:
     name = path.stem
     lines = source.splitlines()
     body = lines[action.lineno - 1 : action.end_lineno]
+    bindings = _bindings(action)
     usecase = {
         "name": name,
         "aggregate": (
@@ -48,9 +52,10 @@ def _read_usecase(path: Path) -> dict | None:
         ),
         "action": action.name,
         "input": _input_fields(tree),
+        "context": _context_params(action),
         "validations": _validations(action),
-        "bindings": _bindings(action),
-        "flow": _flow(action, lines, _bindings(action)),
+        "bindings": bindings,
+        "flow": _flow(action, lines, bindings),
         "output": _output(action),
         "repositories": _repositories(body),
     }
@@ -136,6 +141,14 @@ def _input_fields(tree: ast.Module) -> list[str]:
     return []
 
 
+def _context_params(action) -> list[str]:
+    params = action.args.posonlyargs + action.args.args + action.args.kwonlyargs
+    return [
+        arg.arg for arg in params
+        if arg.arg not in ("session", "input", "self", "cls")
+    ]
+
+
 def _op_from_method(method: str) -> str | None:
     if method == "emit":
         return "event"
@@ -145,7 +158,7 @@ def _op_from_method(method: str) -> str | None:
         return "update"
     if method.startswith(("remove", "delete")):
         return "delete"
-    if method.startswith(("get", "find", "list", "exists", "filter")):
+    if method.startswith(("get", "find", "list", "exists", "filter", "search", "verify")):
         return "read"
     return None
 
@@ -193,6 +206,11 @@ def _source(value, bindings: dict) -> dict | None:
             return {"kind": "var", "var": inner.value.id, "attr": inner.attr}
     if isinstance(value, ast.Name):
         return {"kind": "param", "name": value.id}
+    if isinstance(value, ast.Constant):
+        return {"kind": "const", "expr": ast.unparse(value)}
+    names = [node.id for node in ast.walk(value) if isinstance(node, ast.Name)]
+    if names and all(name[:1].isupper() for name in names):
+        return {"kind": "const", "expr": ast.unparse(value)}
     return None
 
 
@@ -203,16 +221,45 @@ def _kw_fields(call: ast.Call, bindings: dict) -> list[dict]:
     ]
 
 
-def _add_fields(step: dict, fields: list[dict]) -> None:
-    have = {f["name"] for f in step["fields"]}
+def _add_fields(target: dict, fields: list[dict]) -> None:
+    have = {f["name"] for f in target["fields"]}
     for f in fields:
         if f["name"] not in have:
-            step["fields"].append(f); have.add(f["name"])
+            target["fields"].append(f); have.add(f["name"])
 
 
 # flow
 
-# 각 AST 노드는 lineno 기준 직전 # label 에 귀속된다
+def _is_entity_new(node: ast.Call) -> bool:
+    owner = node.func.value
+    return (
+        isinstance(node.func, ast.Attribute)
+        and isinstance(owner, ast.Name)
+        and owner.id[:1].isupper()
+        and not owner.id.endswith(("Repository", "Event"))
+        and node.func.attr == "new"
+    )
+
+
+def _is_entity_evolve(node: ast.Call) -> bool:
+    return isinstance(node.func, ast.Attribute) and node.func.attr.startswith("with_")
+
+
+def _entity_fields(node: ast.Call, bindings: dict) -> list[dict]:
+    if _is_entity_new(node):
+        return _kw_fields(node, bindings)
+    arg = node.args[0] if node.args else (node.keywords[0].value if node.keywords else None)
+    return [{"name": node.func.attr[len("with_"):], "src": _source(arg, bindings) if arg else None}]
+
+
+def _entity_calls(call: ast.Call) -> list[ast.Call]:
+    return [
+        inner for inner in ast.walk(call)
+        if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute)
+        and (_is_entity_new(inner) or _is_entity_evolve(inner))
+    ]
+
+
 def _flow(action, lines: list[str], bindings: dict) -> list[dict]:
     end = action.end_lineno or action.lineno
     labels = [
@@ -224,8 +271,7 @@ def _flow(action, lines: list[str], bindings: dict) -> list[dict]:
         return []
 
     steps = [
-        {"label": label, "op": None, "repo": None, "method": None,
-         "fields": [], "inputs": [], "repos": [], "event": None}
+        {"label": label, "ops": [], "inputs": [], "event": None}
         for _, label in labels
     ]
     starts = [lineno for lineno, _ in labels]
@@ -237,7 +283,7 @@ def _flow(action, lines: list[str], bindings: dict) -> list[dict]:
                 index = i
         return steps[index]
 
-    markers: list[str] = []
+    owned, markers, specs = set(), [], []
     for node in ast.walk(action):
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "input":
             inputs = bucket(node.lineno)["inputs"]
@@ -248,38 +294,60 @@ def _flow(action, lines: list[str], bindings: dict) -> list[dict]:
             continue
         method = node.func.attr
         owner = node.func.value.id if isinstance(node.func.value, ast.Name) else None
-        step = bucket(node.lineno)
 
         if owner and owner.endswith("Repository"):
-            if owner not in step["repos"]:
-                step["repos"].append(owner)
-            step["repo"], step["method"] = owner, method
-            op = _op_from_method(method)
-            step["op"] = op or step["op"]
-            if op in ("read", "delete"):
-                _add_fields(step, _kw_fields(node, bindings))
             if method == "emit":
                 # stamp
-                step["event"] = {
+                bucket(node.lineno)["event"] = {
                     "stamps": [kw.arg for kw in node.keywords if kw.arg and kw.arg not in ("session", "events")],
                     "records": [],
                 }
-        elif owner and owner[:1].isupper() and method == "new":
-            # PascalCase.new(...) = 엔티티 생성 (allowlist 없이 구조로 판별)
-            step["op"] = step["op"] or "create"
-            _add_fields(step, _kw_fields(node, bindings))
-        elif method.startswith("with_"):
-            step["op"] = step["op"] or "update"
-            arg = node.args[0] if node.args else (node.keywords[0].value if node.keywords else None)
-            _add_fields(step, [{"name": method[len("with_"):], "src": _source(arg, bindings) if arg else None}])
+                continue
+            if _op_from_method(method) in ("create", "update"):
+                for inner in _entity_calls(node):
+                    owned.add(id(inner))
+            specs.append(((node.lineno, node.col_offset), node, "repo"))
         elif owner and owner.endswith("Event") and owner[:1].isupper() and method.islower() and not method.startswith("_"):
-            # PascalCaseEvent.<kind>(...) = 도메인 이벤트 마커 (kind 고정 목록 없이 메서드명 그대로)
             markers.append(f"{owner[:-len('Event')].lower()}.{method}")
+
+    for node in ast.walk(action):
+        if id(node) in owned or not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+            continue
+        if _is_entity_new(node) or _is_entity_evolve(node):
+            specs.append(((node.lineno, node.col_offset), node, "entity"))
+
+    for _, node, kind in sorted(specs, key=lambda spec: spec[0]):
+        step = bucket(node.lineno)
+        if kind == "repo":
+            _add_repo_op(step, node, bindings)
+        else:
+            _add_entity_op(step, node, bindings)
 
     emit_step = next((step for step in steps if step["event"]), None)
     if emit_step is not None:
         emit_step["event"]["records"] = markers
     return steps
+
+
+def _add_repo_op(step: dict, node: ast.Call, bindings: dict) -> None:
+    method = node.func.attr
+    op = _op_from_method(method)
+    operation = {"repo": node.func.value.id, "method": method, "op": op, "fields": []}
+    if op in ("read", "delete"):
+        _add_fields(operation, _kw_fields(node, bindings))
+    else:
+        for inner in _entity_calls(node):
+            _add_fields(operation, _entity_fields(inner, bindings))
+    step["ops"].append(operation)
+
+
+def _add_entity_op(step: dict, node: ast.Call, bindings: dict) -> None:
+    op = "create" if _is_entity_new(node) else "update"
+    operation = next((o for o in step["ops"] if o["repo"] is None and o["op"] == op), None)
+    if operation is None:
+        operation = {"repo": None, "method": None, "op": op, "fields": []}
+        step["ops"].append(operation)
+    _add_fields(operation, _entity_fields(node, bindings))
 
 
 def _repositories(body: list[str]) -> list[str]:

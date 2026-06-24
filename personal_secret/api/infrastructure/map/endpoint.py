@@ -4,19 +4,20 @@ import ast
 import re
 from pathlib import Path
 
+from personal_secret.api.infrastructure.map.source import parse_source
 from personal_secret.api.infrastructure.map.usecase import build_usecases
 
 
 # #
 # endpoint
 
-def build_endpoints() -> list[dict]:
+def build_endpoints(usecases: list[dict] | None = None) -> list[dict]:
     bin_path = (
         Path(__file__)
         .resolve()
         .parent.parent.parent / "bin" / "server.py"
     )
-    tree = ast.parse(bin_path.read_text())
+    tree = parse_source(bin_path)
     routes = [
         route
         for node in ast.walk(tree)
@@ -24,12 +25,12 @@ def build_endpoints() -> list[dict]:
         if (route := _route(node))
     ]
     handler_usecase = _handler_usecases()
-    usecases = {usecase["name"]: usecase for usecase in build_usecases()}
+    by_name = {uc["name"]: uc for uc in (usecases if usecases is not None else build_usecases())}
     for route in routes:
         usecase = handler_usecase.get(route["handler"])
         route["usecase"] = usecase
         module, func = route["handler"].split(".", 1)
-        inputs, field_map, auth = _endpoint_io(module, func, route["path"], usecase, usecases.get(usecase))
+        inputs, field_map, auth = _endpoint_io(module, func, route["path"], usecase, by_name.get(usecase))
         route["inputs"] = inputs
         route["field_map"] = field_map
         route["auth"] = auth
@@ -62,7 +63,7 @@ def _handler_usecases() -> dict:
     for path in sorted(directory.glob("*.py")):
         if path.name == "__init__.py":
             continue
-        tree = ast.parse(path.read_text())
+        tree = parse_source(path)
         modules = _usecase_imports(tree)
         for node in tree.body:
             if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)) and not node.name.startswith("_"):
@@ -93,7 +94,7 @@ def _endpoint_io(module: str, func_name: str, path: str, usecase: str | None, uc
         .resolve()
         .parent.parent.parent / "endpoint"
     )
-    tree = ast.parse((directory / f"{module}.py").read_text())
+    tree = parse_source(directory / f"{module}.py")
     func = next(
         (n for n in tree.body if isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef)) and n.name == func_name),
         None,

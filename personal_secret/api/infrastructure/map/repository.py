@@ -3,6 +3,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from personal_secret.api.infrastructure.map.source import parse_source
+
 
 # #
 # repo → table
@@ -15,7 +17,7 @@ def build_repo_tables() -> dict:
     )
     out = {}
     for path in sorted(directory.rglob("*_repository.py")):
-        tree = ast.parse(path.read_text())
+        tree = parse_source(path)
         model_table = {
             node.name: _tablename(node)
             for node in ast.walk(tree)
@@ -53,6 +55,7 @@ def _base_model(base) -> str | None:
 # SELECT 판별은 메서드명이 아니라 _find/_filter 류 read helper 호출 여부로 한다
 _READ_HELPERS = {"_find", "_filter", "_find_by", "_filter_by", "_filter_by_all", "_exists_by", "_count"}
 _WRITE_PREFIX = ("_add", "_update", "_remove", "_upsert", "_set", "_delete", "_create")
+_SUPER_WRITE_PREFIX = ("add", "update", "remove")
 
 
 def build_repositories() -> list[dict]:
@@ -64,7 +67,7 @@ def build_repositories() -> list[dict]:
     base = _base_facts()
     out = []
     for path in sorted(directory.rglob("*_repository.py")):
-        tree = ast.parse(path.read_text())
+        tree = parse_source(path)
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and node.name.endswith("Repository"):
                 out.extend(_repo_queries(node, base))
@@ -80,7 +83,7 @@ def _base_facts() -> dict:
     )
     if not base_path.exists():
         return {}
-    tree = ast.parse(base_path.read_text())
+    tree = parse_source(base_path)
     return {
         m.name: _method_facts(m)
         for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
@@ -111,6 +114,10 @@ def _model_cols(node) -> list[str]:
     return cols
 
 
+def _is_super(node) -> bool:
+    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "super"
+
+
 def _method_facts(m) -> dict:
     card = _cardinality(getattr(m, "returns", None))
     args = [a.arg for a in m.args.args] + [a.arg for a in m.args.kwonlyargs]
@@ -118,7 +125,7 @@ def _method_facts(m) -> dict:
 
     where, order_by, calls = [], None, set()
     direct_query = has_write = False
-    optional = set()
+    optional, ordered = set(), set()
 
     for node in ast.walk(m):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
@@ -135,8 +142,18 @@ def _method_facts(m) -> dict:
                         where.append(kw.value.value)
                     if kw.arg == "order_by" and isinstance(kw.value, ast.Constant):
                         order_by = kw.value.value
-            if isinstance(owner, ast.Name) and owner.id == "session" and fn in ("add", "execute", "delete"):
+            if isinstance(owner, ast.Name) and owner.id == "session":
+                if fn in ("scalars", "scalar"):
+                    direct_query = True
+                elif fn in ("add", "add_all", "execute", "delete"):
+                    has_write = True
+            if _is_super(owner) and fn.startswith(_SUPER_WRITE_PREFIX):
                 has_write = True
+            if fn == "order_by":
+                for arg in node.args:
+                    for c in _model_cols(arg):
+                        ordered.add(c)
+                        order_by = order_by or c
             if fn == "append":
                 for c in _model_cols(node):
                     optional.add(c)
@@ -144,7 +161,7 @@ def _method_facts(m) -> dict:
             for c in _model_cols(node):
                 optional.add(c)
 
-    cols = _model_cols(m)
+    cols = [c for c in _model_cols(m) if c != "deleted_at" and c not in ordered]
     where += [c for c in cols if c not in optional]
     return {
         "card": card, "paginated": paginated, "order_by": order_by,
