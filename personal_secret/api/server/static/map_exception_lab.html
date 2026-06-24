@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>personal_secret · exception map · lab</title>
+<style>
+  :root{
+    --bg:#fbfcfd; --panel:#ffffff; --line:#e4e7eb; --fg:#1a1d21;
+    --muted:#8a9099; --faint:#b0b6bd;
+    --c4:#e03131; --c5:#7048e8;          /* 4xx client · 5xx develop */
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--fg);
+    font:13px/1.55 -apple-system,"Segoe UI",Roboto,"Noto Sans KR",sans-serif}
+
+  /* layout */
+  .top{padding:26px 40px 18px;border-bottom:1px solid var(--line);background:linear-gradient(#f5f7fa,#fbfcfd)}
+  .title{font-family:var(--mono);font-size:22px;font-weight:800;margin:0}
+  .sub{color:var(--muted);margin:7px 0 0;max-width:760px}
+  .nav{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap}
+  .nav a{font-family:var(--mono);font-size:11.5px;text-decoration:none;color:var(--fg);
+    border:1px solid var(--line);background:#fff;border-radius:7px;padding:5px 11px;cursor:pointer}
+  .nav a:hover{border-color:var(--fg)}
+  .legend{display:flex;gap:16px;margin-top:14px;font-size:11px;color:var(--muted);flex-wrap:wrap}
+  .legend b{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+  section{padding:34px 40px 12px;border-bottom:1px solid var(--line)}
+  .shead{display:flex;align-items:baseline;gap:12px;margin-bottom:4px}
+  .stag{font-family:var(--mono);font-size:10px;font-weight:800;letter-spacing:.5px;
+    color:#fff;background:#1a1d21;border-radius:5px;padding:2px 7px}
+  .sttl{font-size:16px;font-weight:700;margin:0}
+  .sdesc{color:var(--muted);margin:6px 0 22px;max-width:820px}
+  .sdesc .k{font-weight:700;color:var(--fg)}
+  .pro{color:#2b8a3e} .con{color:#c92a2a}
+
+  /* exception chip */
+  .x{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;
+    border-radius:6px;padding:2px 7px 2px 4px;white-space:nowrap;border:1px solid transparent}
+  .x .code{font-weight:800;border-radius:4px;padding:0 5px;color:#fff;font-size:10px}
+  .x.c4{background:#fff0f0;border-color:#ffc9c9;color:#a4161a} .x.c4 .code{background:var(--c4)}
+  .x.c5{background:#f3f0ff;border-color:#d0bfff;color:#5f3dc4} .x.c5 .code{background:var(--c5)}
+  .x .cls{font-weight:600}
+
+  /* method tag */
+  .m{font-family:var(--mono);font-weight:800;font-size:11px}
+  .m.GET{color:#2563eb}.m.POST{color:#1a7f37}.m.PUT{color:#b45309}.m.PATCH{color:#b45309}.m.DELETE{color:#b3261e}
+  .path{font-family:var(--mono);font-size:12px;font-weight:600}
+  .path .pp{color:#b45309}
+  .auth{font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;
+    padding:1px 5px;border-radius:3px;background:#f1f5f9;color:#64748b}
+
+  /* ───────── A · response catalog ───────── */
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+  .card{border:1px solid var(--line);border-radius:11px;background:var(--panel);overflow:hidden}
+  .card .hd{display:flex;align-items:center;gap:9px;padding:11px 13px;border-bottom:1px solid var(--line);background:#fcfdfe}
+  .card .hd .path{flex:1;overflow:hidden;text-overflow:ellipsis}
+  .card .bd{padding:11px 13px;display:flex;flex-direction:column;gap:9px}
+  .resp{display:flex;align-items:flex-start;gap:9px}
+  .resp .rc{font-family:var(--mono);font-weight:800;font-size:11px;min-width:30px;padding-top:1px}
+  .resp.ok .rc{color:#2b8a3e}
+  .resp .xs{display:flex;flex-wrap:wrap;gap:5px;flex:1}
+  .okrow{color:#2b8a3e;font-family:var(--mono);font-size:10.5px}
+
+  /* ───────── B · layer exit-ramps ───────── */
+  .flow{border:1px solid var(--line);border-radius:11px;background:var(--panel);padding:16px 16px 6px;margin-bottom:14px}
+  .flow .fh{display:flex;align-items:center;gap:9px;margin-bottom:16px}
+  .lanes{display:grid;grid-template-columns:repeat(4,1fr);gap:0}
+  .lane{position:relative;padding:0 10px}
+  .lane:not(:last-child)::after{content:"";position:absolute;top:13px;right:-5px;width:10px;height:1px;
+    border-top:1.5px dashed #cbd5e1}
+  .lhd{display:flex;align-items:center;justify-content:center;height:26px;border-radius:7px;
+    background:#eef1f5;color:#475569;font-family:var(--mono);font-size:10px;font-weight:800;
+    letter-spacing:.4px;text-transform:uppercase}
+  .ramp{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:4px;padding-top:10px;position:relative}
+  .ramp::before{content:"";position:absolute;top:0;left:50%;width:1.5px;height:10px;background:#cbd5e1}
+  .ramp .x{width:max-content}
+  .ramp.empty{opacity:.25;font-family:var(--mono);font-size:10px;color:var(--muted);padding-top:12px}
+  .ramp.empty::before{display:none}
+
+  /* ───────── C · coverage matrix ───────── */
+  .matrix{border:1px solid var(--line);border-radius:11px;overflow:hidden;background:var(--panel)}
+  table{border-collapse:collapse;width:100%;font-size:11.5px}
+  th,td{border:1px solid var(--line);padding:0}
+  thead th{background:#f4f6f8;font-family:var(--mono);font-size:10px;font-weight:800;height:34px;
+    color:#475569;letter-spacing:.3px}
+  thead th.ep{text-align:left;padding:0 12px;min-width:260px}
+  tbody td.ep{text-align:left;padding:7px 12px;white-space:nowrap}
+  td.cell{text-align:center;width:64px;height:34px;cursor:default}
+  td.cell .dot{display:inline-block;font-family:var(--mono);font-size:9px;font-weight:800;color:#fff;
+    border-radius:5px;padding:2px 6px;min-width:34px}
+  td.cell.c4 .dot{background:var(--c4)} td.cell.c5 .dot{background:var(--c5)}
+  td.cell.on{background:#fff7f7} td.cell.on.is5{background:#f6f3ff}
+  .mfoot{padding:9px 12px;color:var(--muted);font-size:10.5px;border-top:1px solid var(--line)}
+
+  .agg{font-family:var(--mono);font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;
+    color:var(--faint);margin:22px 0 12px}
+  .agg:first-child{margin-top:0}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1 class="title">Exception Map · Lab</h1>
+  <p class="sub">happy-path map(<code>/map</code>)에 빠진 한 축 — <b>예외(unhappy path)</b>를 어떻게 그릴지 세 가지 안을 같은 데이터로 비교한다.
+  예외는 실제 <code>raise</code> 지점에서 AST로 추적한다(발생하지 않는 예외는 싣지 않음).</p>
+  <div class="nav">
+    <a data-go="a">A · 응답 카탈로그</a>
+    <a data-go="b">B · 레이어 exit-ramp</a>
+    <a data-go="c">C · 커버리지 매트릭스</a>
+  </div>
+  <div class="legend">
+    <span><b style="background:var(--c4)"></b>4xx · ClientError (사용자 노출)</span>
+    <span><b style="background:var(--c5)"></b>5xx · DevelopError (prod 마스킹)</span>
+    <span id="stat"></span>
+  </div>
+</div>
+
+<section id="a">
+  <div class="shead"><span class="stag">A</span><h2 class="sttl">응답 카탈로그 — 클라이언트가 보는 것</h2></div>
+  <p class="sdesc">엔드포인트마다 <span class="k">가능한 HTTP 응답</span>을 한 카드에 모은다. OpenAPI <code>responses</code>처럼 200 + 모든 4xx/5xx를 코드별로.
+  <span class="pro">+ "이 API가 뭘 던지나"가 한눈에</span> · <span class="con">− 어느 레이어에서 나는지는 안 보임</span></p>
+  <div id="a-body"></div>
+</section>
+
+<section id="b">
+  <div class="shead"><span class="stag">B</span><h2 class="sttl">레이어 exit-ramp — 어디서 터지나</h2></div>
+  <p class="sdesc">happy-path 흐름(<span class="k">endpoint → usecase → domain → db</span>)을 가로로 두고, 각 레이어에서 예외가 아래로 빠져나가는 exit-ramp로 그린다.
+  <span class="pro">+ 발생 위치가 명확, 기존 map과 일관</span> · <span class="con">− 카드 밀도 증가</span></p>
+  <div id="b-body"></div>
+</section>
+
+<section id="c">
+  <div class="shead"><span class="stag">C</span><h2 class="sttl">커버리지 매트릭스 — 전수 점검</h2></div>
+  <p class="sdesc">엔드포인트(행) × HTTP 코드(열). 어떤 API가 어떤 상태를 낼 수 있는지 격자로.
+  <span class="pro">+ 빠진 곳·치우침이 보인다(예: 401 누락)</span> · <span class="con">− 구체 예외명은 hover로</span></p>
+  <div id="c-body"></div>
+</section>
+
+<script>
+let MAP = null;
+const API = new URLSearchParams(location.search).get("api") || "";
+const CODE_ORDER = [400, 401, 403, 404, 409, 422, 500];
+
+const LANES = [
+  {key:"endpoint", label:"endpoint", origins:["endpoint"]},
+  {key:"usecase",  label:"usecase",  origins:["input", "usecase"]},
+  {key:"domain",   label:"domain",   origins:["domain"]},
+  {key:"db",       label:"db · infra", origins:["db", "infra"]},
+];
+
+async function load(){
+  try{
+    const r = await fetch(API + "/system/map", {cache:"no-store"});
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    MAP = await r.json();
+    render();
+  }catch(e){ document.getElementById("a-body").textContent = "load failed: " + e; }
+}
+
+// #
+// model — endpoint 별 예외 = usecase 내재 예외 + auth(behavior) 예외
+
+function endpointExceptions(ep){
+  const ex = MAP.exceptions || {by_usecase:{}, behavior:[]};
+  const list = [];
+  if(ep.auth && ep.auth !== "none"){
+    for(const e of ex.behavior){
+      if(e.code === 403 && !["team", "owner"].includes(ep.auth)) continue;
+      list.push({...e, origin:"endpoint", via:"auth:" + ep.auth});
+    }
+  }
+  if(ep.usecase && ex.by_usecase[ep.usecase]) list.push(...ex.by_usecase[ep.usecase]);
+  return list;
+}
+
+// 코드+클래스로 접기 (input 은 필드마다 중복 → 한 칩으로)
+function collapse(list){
+  const seen = new Set(), out = [];
+  for(const e of list){
+    const k = e.code + ":" + e.class;
+    if(seen.has(k)) continue;
+    seen.add(k); out.push(e);
+  }
+  return out.sort((a, b) => a.code - b.code);
+}
+
+function pathBoxed(p){ return p.replace(/(\{[^}]+\})/g, '<span class="pp">$1</span>'); }
+function chip(e){
+  const cat = e.code < 500 ? "c4" : "c5";
+  const t = e.message ? ` title="${e.message.replace(/"/g, "&quot;")}"` : "";
+  return `<span class="x ${cat}"${t}><span class="code">${e.code}</span><span class="cls">${e.class}</span></span>`;
+}
+
+const AGG_ORDER = ["system", "auth", "account", "team", "secret"];
+function grouped(){
+  const g = {};
+  for(const ep of (MAP.endpoints || [])){
+    if(!ep.usecase && (!ep.auth || ep.auth === "none")) continue;
+    const k = ep.handler.split(".")[0];
+    (g[k] = g[k] || []).push(ep);
+  }
+  return Object.keys(g).sort((a, b) => {
+    const ia = AGG_ORDER.indexOf(a), ib = AGG_ORDER.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  }).map(k => [k, g[k]]);
+}
+
+function epHeader(ep){
+  const auth = ep.auth && ep.auth !== "none" ? `<span class="auth">${ep.auth}</span>` : "";
+  return `<span class="m ${ep.method}">${ep.method}</span><span class="path">${pathBoxed(ep.path)}</span>${auth}`;
+}
+
+// #
+// render
+
+function render(){
+  const eps = grouped().flatMap(([, list]) => list);
+  let total = 0;
+  eps.forEach(ep => total += collapse(endpointExceptions(ep)).length);
+  document.getElementById("stat").textContent =
+    `${eps.length} endpoints · ${total} 예외 경로 · ${(MAP.exceptions.registry || []).length} 예외 클래스`;
+  renderA(); renderB(); renderC();
+  document.querySelectorAll(".nav a").forEach(a =>
+    a.onclick = () => document.getElementById(a.dataset.go).scrollIntoView({behavior:"smooth"}));
+}
+
+// A — 응답 카탈로그
+function renderA(){
+  const root = document.getElementById("a-body");
+  root.innerHTML = grouped().map(([agg, list]) => {
+    const cards = list.map(ep => {
+      const ex = collapse(endpointExceptions(ep));
+      const byCode = {};
+      ex.forEach(e => (byCode[e.code] = byCode[e.code] || []).push(e));
+      const rows = CODE_ORDER.filter(c => byCode[c]).map(c =>
+        `<div class="resp"><span class="rc" style="color:${c < 500 ? "var(--c4)" : "var(--c5)"}">${c}</span>`+
+        `<span class="xs">${byCode[c].map(chip).join("")}</span></div>`).join("");
+      return `<div class="card"><div class="hd">${epHeader(ep)}</div>`+
+        `<div class="bd"><div class="resp ok"><span class="rc">200</span><span class="okrow">OK · Output</span></div>${rows}</div></div>`;
+    }).join("");
+    return `<div class="agg">${agg}</div><div class="cards">${cards}</div>`;
+  }).join("");
+}
+
+// B — 레이어 exit-ramp
+function renderB(){
+  const root = document.getElementById("b-body");
+  root.innerHTML = grouped().map(([agg, list]) => {
+    const flows = list.map(ep => {
+      const ex = endpointExceptions(ep);
+      const lanes = LANES.map(lane => {
+        const here = collapse(ex.filter(e => lane.origins.includes(e.origin)));
+        const ramp = here.length
+          ? `<div class="ramp">${here.map(chip).join("")}</div>`
+          : `<div class="ramp empty">—</div>`;
+        return `<div class="lane"><div class="lhd">${lane.label}</div>${ramp}</div>`;
+      }).join("");
+      return `<div class="flow"><div class="fh">${epHeader(ep)}</div><div class="lanes">${lanes}</div></div>`;
+    }).join("");
+    return `<div class="agg">${agg}</div>${flows}`;
+  }).join("");
+}
+
+// C — 커버리지 매트릭스
+function renderC(){
+  const root = document.getElementById("c-body");
+  const eps = grouped().flatMap(([, list]) => list);
+  const codes = CODE_ORDER.filter(c => eps.some(ep => endpointExceptions(ep).some(e => e.code === c)));
+  const head = `<tr><th class="ep">endpoint</th>${codes.map(c =>
+    `<th style="color:${c < 500 ? "var(--c4)" : "var(--c5)"}">${c}</th>`).join("")}</tr>`;
+  const rows = eps.map(ep => {
+    const ex = collapse(endpointExceptions(ep));
+    const cells = codes.map(c => {
+      const hits = ex.filter(e => e.code === c);
+      if(!hits.length) return `<td class="cell"></td>`;
+      const cls = c < 500 ? "c4" : "c5 is5";
+      const tip = hits.map(h => h.class).join(", ");
+      return `<td class="cell on ${cls}" title="${tip}"><span class="dot">${hits.length}</span></td>`;
+    }).join("");
+    return `<tr><td class="ep">${epHeader(ep)}</td>${cells}</tr>`;
+  }).join("");
+  root.innerHTML = `<div class="matrix"><table><thead>${head}</thead><tbody>${rows}</tbody></table>`+
+    `<div class="mfoot">셀 숫자 = 그 코드로 귀결하는 구체 예외 수 · hover로 클래스명</div></div>`;
+}
+
+load();
+</script>
+</body>
+</html>

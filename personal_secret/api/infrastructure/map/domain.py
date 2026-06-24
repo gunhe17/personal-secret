@@ -1,32 +1,55 @@
 from __future__ import annotations
 
 import ast
+from functools import lru_cache
 from pathlib import Path
+
+from personal_secret.api.infrastructure.map.source import parse_source
 
 
 # #
 # domain reference
 
 def _domain_classes(base: str):
+    for node, tree in _domain_defs(_domain_signature()):
+        if any(isinstance(b, ast.Name) and b.id == base for b in node.bases):
+            yield node, tree
+
+
+def _domain_signature() -> tuple:
     directory = (
         Path(__file__)
         .resolve()
         .parent.parent.parent / "domain"
     )
-    for path in sorted(directory.rglob("*.py")):
-        if "__pycache__" in str(path):
-            continue
-        tree = ast.parse(path.read_text())
+    return tuple(
+        (str(path), path.stat().st_mtime)
+        for path in sorted(directory.rglob("*.py"))
+        if "__pycache__" not in str(path)
+    )
+
+
+# 한 build 의 3개 빌더가 도메인 파일을 한 번만 walk 하도록 signature 로 캐시
+@lru_cache(maxsize=None)
+def _domain_defs(signature: tuple) -> list:
+    out = []
+    for path, _ in signature:
+        tree = parse_source(Path(path))
         for node in tree.body:
-            if isinstance(node, ast.ClassDef) and any(isinstance(b, ast.Name) and b.id == base for b in node.bases):
-                yield node, tree
+            if isinstance(node, ast.ClassDef):
+                out.append((node, tree))
+    return out
 
 
 def _literal(node):
     if isinstance(node, ast.Constant):
         return node.value
     if isinstance(node, (ast.Tuple, ast.List)):
-        return [e.value for e in node.elts if isinstance(e, ast.Constant)]
+        return [
+            element.value if isinstance(element, ast.Constant) else element.id
+            for element in node.elts
+            if isinstance(element, (ast.Constant, ast.Name))
+        ]
     return None
 
 

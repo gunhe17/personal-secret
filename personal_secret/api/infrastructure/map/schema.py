@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from sqlalchemy import UniqueConstraint
+
 import personal_secret.api.domain  # noqa: F401  (모든 Model 을 metadata 에 등록)
 from personal_secret.api.core.model import Base
 
@@ -40,13 +42,11 @@ def build_schema() -> dict:
 
 def _uniques(table) -> tuple[set, list]:
     single, composite = set(), []
-    for index in table.indexes:
-        if not index.unique:
-            continue
-        cols = [c.name for c in index.columns]
+    for source in [c for c in table.constraints if isinstance(c, UniqueConstraint)] + [i for i in table.indexes if i.unique]:
+        cols = [column.name for column in source.columns]
         if len(cols) == 1:
             single.add(cols[0])
-        else:
+        elif cols:
             composite.append(cols)
     return single, composite
 
