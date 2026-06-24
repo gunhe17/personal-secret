@@ -54,6 +54,11 @@ from personal_secret.api.usecase import team_rotate
 from personal_secret.api.usecase import account_get_only_public_key
 from personal_secret.api.usecase import secret_reveal
 from personal_secret.api.usecase import secret_search
+from personal_secret.api.usecase import event_dispatch
+
+from personal_secret.api.domain.team_access.team_access_event import TeamAccessEvent
+
+from personal_secret.api.infrastructure.notification.smtp.client import smtp
 
 from personal_secret.api.infrastructure.hash.sha256.client import sha256
 
@@ -376,18 +381,19 @@ async def event_emit_stamps_actor_and_team(session):
         entity=make_secret(domain="ssh", service="github", project="prod", field="password"),
     )
     actor = uuid.uuid4()
-    [event] = await EventRepository.emit(
+    group = uuid.uuid4()
+    [atomic] = await EventRepository.emit(
         session=session,
-        id=uuid.uuid4(),
+        id=group,
         name="test",
         atomics=[SecretEvent.created(secret=secret)[0]],
         actor_id=actor,
         actor_team_id=secret.team_id,
     )
-    assert event.payload.to_dict() == {"domain": "ssh", "service": "github", "project": "prod", "field": "password"}
-    assert event.sequence is not None                # DB Identity 발급
-    assert event.actor_id == actor                   # emit이 행위자 스탬프
-    assert event.actor_team_id == secret.team_id     # RLS 테넌트
+    assert atomic.sequence is not None               # DB Identity 발급
+    assert atomic.actor_id == actor                  # emit이 행위자 스탬프
+    assert atomic.actor_team_id == secret.team_id    # RLS 테넌트
+    assert atomic.payload.to_dict() == {"domain": "ssh", "service": "github", "project": "prod", "field": "password"}
 
 
 async def event_emit_global_has_no_actor_team(session):
@@ -420,6 +426,78 @@ async def secret_reveal_emits_read_event(session):
     assert reads[0].act_entity_id == secret.id       # 어떤 시크릿을
     assert reads[0].actor_id == actor                # 누가 읽었나
     assert reads[0].actor_team_id == secret.team_id
+
+
+async def event_dispatch_fans_out_reaction_per_atomic(session):
+    team = uuid.uuid4()
+    group = uuid.uuid4()
+    a1 = await AccountRepository.add(session=session, entity=make_account(email="a@example.com"))
+    a2 = await AccountRepository.add(session=session, entity=make_account(email="b@example.com"))
+    await EventRepository.emit(
+        session=session,
+        id=group,
+        name="team_invite",                            # notify_invited_member 등록된 이벤트
+        atomics=[
+            TeamAccessEvent.created(team_access=make_account_team(account_id=a1.id, team_id=team), email="a@example.com", team_name="acme")[0],
+            TeamAccessEvent.created(team_access=make_account_team(account_id=a2.id, team_id=team), email="b@example.com", team_name="acme")[0],
+        ],
+        actor_team_id=team,
+    )
+
+    # stub smtp
+    sent = []
+    original = smtp.send
+    async def _fake(*, to, subject, body):
+        sent.append(to)
+    smtp.send = _fake
+    try:
+        await event_dispatch.dispatch(session=session, id=group)
+    finally:
+        smtp.send = original
+
+    assert sorted(sent) == ["a@example.com", "b@example.com"]   # atomic 2개 → reaction 2번
+
+
+async def event_dispatch_skips_already_succeeded_on_redispatch(session):
+    team = uuid.uuid4()
+    group = uuid.uuid4()
+    a1 = await AccountRepository.add(session=session, entity=make_account(email="a@example.com"))
+    a2 = await AccountRepository.add(session=session, entity=make_account(email="b@example.com"))
+    await EventRepository.emit(
+        session=session,
+        id=group,
+        name="team_invite",
+        atomics=[
+            TeamAccessEvent.created(team_access=make_account_team(account_id=a1.id, team_id=team), email="a@example.com", team_name="acme")[0],
+            TeamAccessEvent.created(team_access=make_account_team(account_id=a2.id, team_id=team), email="b@example.com", team_name="acme")[0],
+        ],
+        actor_team_id=team,
+    )
+    original = smtp.send
+
+    # pass1: b@ 발송 실패
+    sent1 = []
+    async def _flaky(*, to, subject, body):
+        if to == "b@example.com":
+            raise RuntimeError("smtp down")
+        sent1.append(to)
+    smtp.send = _flaky
+    try:
+        await event_dispatch.dispatch(session=session, id=group)
+    finally:
+        smtp.send = original
+    assert sent1 == ["a@example.com"]                  # a@ 만 성공, ledger 에 b@ failed
+
+    # pass2: a@ 는 ledger skip, b@ 만 재시도
+    sent2 = []
+    async def _ok(*, to, subject, body):
+        sent2.append(to)
+    smtp.send = _ok
+    try:
+        await event_dispatch.dispatch(session=session, id=group)
+    finally:
+        smtp.send = original
+    assert sent2 == ["b@example.com"]                  # a@ 재발송 안 됨
 
 
 async def secret_list_emits_read_per_result_sharing_act_group(session):
@@ -695,6 +773,8 @@ TESTS = [
     event_emit_stamps_actor_and_team,
     event_emit_global_has_no_actor_team,
     secret_reveal_emits_read_event,
+    event_dispatch_fans_out_reaction_per_atomic,
+    event_dispatch_skips_already_succeeded_on_redispatch,
     secret_list_emits_read_per_result_sharing_act_group,
     account_find_by_email,
     auth_register_creates_account,

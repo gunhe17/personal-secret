@@ -53,14 +53,14 @@ class AtomicEvent(Entity):
 
     @classmethod
     @typecheck
-    def from_marker(cls, *, marker, event_id: UUID, actor_id: UUID | None = None, actor_team_id: UUID | None = None) -> "AtomicEvent":
+    def from_atomic(cls, *, atomic, event_id: UUID, actor_id: UUID | None = None, actor_team_id: UUID | None = None) -> "AtomicEvent":
         return cls.new(
-            id=marker.id(),
+            id=atomic.id(),
             event_id=event_id,
-            act=Act.from_str(marker.act()),
-            act_entity_name=EntityName.from_str(marker.act_entity_name()),
-            act_entity_id=marker.act_entity_id(),
-            payload=Payload.from_dict(marker.payload()),
+            act=Act.from_str(atomic.act()),
+            act_entity_name=EntityName.from_str(atomic.act_entity_name()),
+            act_entity_id=atomic.act_entity_id(),
+            payload=Payload.from_dict(atomic.payload()),
             actor_id=actor_id,
             actor_team_id=actor_team_id,
         )

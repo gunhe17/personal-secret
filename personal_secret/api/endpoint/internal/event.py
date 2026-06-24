@@ -14,6 +14,7 @@ from personal_secret.api.usecase import event_dispatch
 async def on_event_group(raw: str) -> None:
     # parse
     payload = json.loads(raw)
+    
     event_group_id = UUID(payload["group_id"])
     account_id = UUID(payload["account_id"]) if "account_id" in payload else None
     team_id = UUID(payload["team_id"]) if "team_id" in payload else None

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from personal_secret.api.core.usecase import In
+from personal_secret.api.core.usecase import EventIn
 from personal_secret.api.core.validate import typecheck
 
 from personal_secret.api.infrastructure.notification.smtp.client import smtp
@@ -9,12 +9,19 @@ from personal_secret.api.infrastructure.notification.smtp.client import smtp
 # #
 # input
 
-class Input(In):
-    _source_event = "team_access.created"
-
+class Input(EventIn):
     email: str
     team_name: str
     role: str
+
+    @classmethod
+    def from_event(cls, atomic) -> "Input":
+        payload = atomic.payload.to_dict()
+        return cls(
+            email=payload["email"],
+            team_name=payload["team_name"],
+            role=payload["role"],
+        )
 
 
 # #

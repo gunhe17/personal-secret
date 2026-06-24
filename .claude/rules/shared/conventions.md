@@ -340,7 +340,7 @@ from personal_secret.api.endpoint.secret import post_create as secret_post_creat
 - DB 접근 메서드는 `async`
 - 트랜잭션은 `@asynccontextmanager` 헬퍼로 래핑
 - 추상 비동기 메서드 본문도 `...`
-- `@typecheck` (`core/validate.py`) — 인자 런타임 타입 검사. 불일치 시 `DevelopError`(새 예외 없이 직접 raise). Entity/VO 팩토리(`new`)·이벤트 마커 팩토리·usecase 함수에 부착. `@classmethod`와 함께 쓸 땐 `@classmethod` 위, `@typecheck` 아래 순서
+- `@typecheck` (`core/validate.py`) — 인자 런타임 타입 검사. 불일치 시 `DevelopError`(새 예외 없이 직접 raise). Entity/VO 팩토리(`new`)·이벤트 atomic 팩토리·usecase 함수에 부착. `@classmethod`와 함께 쓸 땐 `@classmethod` 위, `@typecheck` 아래 순서
 
 ```python
 @asynccontextmanager

@@ -16,23 +16,41 @@ async def dispatch(*, session, id: UUID) -> None:
     if event is None:
         return
 
-    atomics = await EventRepository.filter_by_event_id(
-        session=session,
-        event_id=id,
-    )
-
     # route
     commands = EVENT_COMMANDS.get(
         event.name.to_str(),
         [],
     )
+    if not commands:
+        return
 
-    # run
+    # load
+    atomics = await EventRepository.filter_by_event_id(
+        session=session,
+        event_id=id,
+    )
+
+    # fan-out
+    ledger = event.attempts
     for command in commands:
-        await command.run(
-            session=session,
-            input=command.Input.from_events(atomics),
-        )
+        reaction = command.__name__.rsplit(".", 1)[-1]
+        for atomic in atomics:
+            if ledger.is_done(reaction=reaction, atomic_id=atomic.id):
+                continue
+            try:
+                await command.run(
+                    session=session,
+                    input=command.Input.from_event(atomic),
+                )
+                ledger = ledger.record_success(reaction=reaction, atomic_id=atomic.id)
+            except Exception as exc:
+                ledger = ledger.record_failure(reaction=reaction, atomic_id=atomic.id, error=str(exc))
+
+    # persist ledger
+    await EventRepository.update(
+        session=session,
+        entity=event.with_attempts(ledger),
+    )
 
 
 # #

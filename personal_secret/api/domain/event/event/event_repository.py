@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import DateTime, Integer, String, Uuid, func, select
+from sqlalchemy import DateTime, String, Uuid, func, select
 from sqlalchemy import update as sql_update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -17,7 +17,6 @@ from personal_secret.api.domain.event.event.event import Event
 from personal_secret.api.domain.event.event.event_name import EventName
 from personal_secret.api.domain.event.event.dispatch_status import DispatchStatus
 from personal_secret.api.domain.event.event.attempts import Attempts
-from personal_secret.api.domain.event.event.errors import Errors
 
 from personal_secret.api.domain.event.atomic_event.atomic_event import AtomicEvent
 from personal_secret.api.domain.event.atomic_event.atomic_event_model import AtomicEventModel
@@ -45,11 +44,7 @@ class EventModel(Model):
         nullable=False,
         index=True,
     )
-    attempts: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-    )
-    errors: Mapped[list] = mapped_column(
+    attempts: Mapped[dict] = mapped_column(
         JSONB,
         nullable=False,
     )
@@ -89,8 +84,7 @@ def _to_event(model: EventModel) -> Event:
         id=model.id,
         name=EventName.from_str(model.name),
         status=DispatchStatus.from_str(model.status),
-        attempts=Attempts.from_int(model.attempts),
-        errors=Errors.from_list(model.errors),
+        attempts=Attempts.from_dict(model.attempts),
         claimed_at=model.claimed_at,
         succeeded_at=model.succeeded_at,
         failed_at=model.failed_at,
@@ -127,20 +121,23 @@ class EventRepository(PostgresRepository[Event, EventModel]):
         # event
         statement = (
             pg_insert(cls.model)
-            .values(**Event.new(id=id, name=EventName.from_str(name)).to_model())
+            .values(**Event.new(
+                id=id,
+                name=EventName.from_str(name),
+            ).to_model())
             .on_conflict_do_nothing(index_elements=["id"])
         )
         await session.execute(statement)
 
         # atomic
         entities = [
-            AtomicEvent.from_marker(
-                marker=marker,
+            AtomicEvent.from_atomic(
+                atomic=atomic,
                 event_id=id,
                 actor_id=actor_id,
                 actor_team_id=actor_team_id,
             )
-            for marker in atomics
+            for atomic in atomics
         ]
         models = [AtomicEventModel(**entity.to_model()) for entity in entities]
         session.add_all(models)

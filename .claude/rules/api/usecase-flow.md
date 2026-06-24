@@ -159,7 +159,7 @@ async def update(*, session, event_group_id, input: Input) -> Output:
     )
 ```
 
-read(조회) — 쓰기 없지만 성공 접근 이벤트는 기록하고, write처럼 응답에 echo한다. 마커가 fetch 를 감싼다([domain-event.md](domain-event.md)):
+read(조회) — 쓰기 없지만 성공 접근 이벤트는 기록하고, write처럼 응답에 echo한다. atomic이 fetch 를 감싼다([domain-event.md](domain-event.md)):
 
 ```python
 @typecheck

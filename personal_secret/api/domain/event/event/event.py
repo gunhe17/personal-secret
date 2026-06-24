@@ -10,7 +10,6 @@ from personal_secret.api.core.validate import typecheck
 from personal_secret.api.domain.event.event.event_name import EventName
 from personal_secret.api.domain.event.event.dispatch_status import DispatchStatus
 from personal_secret.api.domain.event.event.attempts import Attempts
-from personal_secret.api.domain.event.event.errors import Errors
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -18,7 +17,6 @@ class Event(Entity):
     name: EventName
     status: DispatchStatus
     attempts: Attempts
-    errors: Errors
     claimed_at: datetime | None = None
     succeeded_at: datetime | None = None
     failed_at: datetime | None = None
@@ -33,8 +31,7 @@ class Event(Entity):
             id=id,
             name=name,
             status=DispatchStatus.pending(),
-            attempts=Attempts.from_int(0),
-            errors=Errors.from_list([]),
+            attempts=Attempts.empty(),
             by_factory=True,
         )
         return event
@@ -51,16 +48,15 @@ class Event(Entity):
         )
 
     def fail(self, *, at: datetime, error: str, max_attempts: int) -> "Event":
-        attempted = self.attempts.increment()
-        recorded = self.errors.append(error)
+        # reaction 실패는 ledger 에 담겨 여기로 안 온다. 여기는 dispatch 단위 인프라 실패만
+        recorded = self.attempts.record_dispatch_failure(error=error)
 
         # cap
-        if attempted.to_int() >= max_attempts:
+        if recorded.dispatch_count() >= max_attempts:
             return replace(
                 self,
                 status=DispatchStatus.failed(),
-                attempts=attempted,
-                errors=recorded,
+                attempts=recorded,
                 failed_at=at,
                 by_factory=True,
             )
@@ -68,10 +64,12 @@ class Event(Entity):
         return replace(
             self,
             status=DispatchStatus.pending(),
-            attempts=attempted,
-            errors=recorded,
+            attempts=recorded,
             by_factory=True,
         )
+
+    def with_attempts(self, attempts: Attempts) -> "Event":
+        return replace(self, attempts=attempts, by_factory=True)
 
     # #
     # query
@@ -81,8 +79,7 @@ class Event(Entity):
             "id": str(self.id),
             "name": self.name.to_str(),
             "status": self.status.to_str(),
-            "attempts": self.attempts.to_int(),
-            "errors": self.errors.to_list(),
+            "attempts": self.attempts.to_dict(),
             "claimed_at": (
                 self.claimed_at.isoformat() if self.claimed_at else None
             ),
@@ -108,8 +105,7 @@ class Event(Entity):
             "id": self.id,
             "name": self.name.to_str(),
             "status": self.status.to_str(),
-            "attempts": self.attempts.to_int(),
-            "errors": self.errors.to_list(),
+            "attempts": self.attempts.to_dict(),
             "claimed_at": self.claimed_at,
             "succeeded_at": self.succeeded_at,
             "failed_at": self.failed_at,

@@ -27,3 +27,23 @@ def page_map() -> FileResponse:
         .resolve()
         .parent.parent / "server" / "static" / "map.html"
     )
+
+
+def page_lab() -> FileResponse:
+    return FileResponse(
+        Path(
+            __file__
+        )
+        .resolve()
+        .parent.parent / "server" / "static" / "map_lab.html"
+    )
+
+
+def page_exception_lab() -> FileResponse:
+    return FileResponse(
+        Path(
+            __file__
+        )
+        .resolve()
+        .parent.parent / "server" / "static" / "map_exception_lab.html"
+    )

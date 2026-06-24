@@ -36,6 +36,12 @@ server.router(
 server.router(
     Router(path="/map", methods=["GET"], endpoint=system.page_map)
 )
+server.router(
+    Router(path="/map/lab", methods=["GET"], endpoint=system.page_lab)
+)
+server.router(
+    Router(path="/map/exception/lab", methods=["GET"], endpoint=system.page_exception_lab)
+)
 
 # auth
 server.router(

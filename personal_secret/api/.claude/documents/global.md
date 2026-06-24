@@ -27,7 +27,7 @@
 | INV-4 | 모든 예외는 `ClientError`/`DevelopError`로 귀결 | exception.md |
 | INV-5 | 같은 session=transaction, usecase 1개=1 트랜잭션 | usecase-flow.md |
 | INV-6 | repository는 stateless classmethod (인스턴스화 안 함) | repository.md |
-| INV-7 | 도메인 이벤트 마커는 순수 (자기 aggregate만, IO 0) | domain-event.md |
+| INV-7 | 도메인 이벤트 atomic은 순수 (자기 aggregate만, IO 0) | domain-event.md |
 | INV-8 | usecase는 항상 `Output(data, event)` 반환 | usecase-flow.md |
 | INV-9 | unique 충돌은 domain repo가 강제 (usecase 사전검사 금지) | usecase-flow.md |
 | INV-10 | 도메인 값은 전부 VO (예외: UUID id/FK·audit datetime) | value-object.md |
